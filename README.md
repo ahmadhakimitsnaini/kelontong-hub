@@ -1,16 +1,94 @@
-# React + Vite
+# 🏪 MaduraDigital (Kelontong-Hub)
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+**MaduraDigital** adalah aplikasi Point of Sale (POS) dan manajemen inventaris modern yang dirancang khusus untuk toko kelontong atau "Warung Madura". 
 
-Currently, two official plugins are available:
+Aplikasi ini dibangun dengan konsep **Mobile-First** dan **Offline-First**, memastikan kasir dapat melayani pembeli secepat kilat (*Quick-Tap*) hanya dari layar HP/Tablet, bahkan ketika koneksi internet sedang terputus sama sekali.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+## 🚀 Fitur Unggulan
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+1. **⚡ Kasir Cepat (Quick-Tap POS)**
+   - Desain tombol produk yang besar (*thumb-friendly*) untuk layar sentuh, menghilangkan ketergantungan pada *barcode scanner*.
+   - Filter kategori pintar yang mendeteksi jenis barang secara otomatis.
+   - Mengurangi stok barang secara instan dari gudang setelah pembayaran (checkout).
 
-## Expanding the Oxlint configuration
+2. **📦 Inventaris & FIFO Pintar (First In, First Out)**
+   - **Indikator Kadaluwarsa Visual:** Barang yang akan segera basi/kadaluwarsa diberi label merah (< 7 hari) atau kuning (< 1 bulan) agar segera dipajang di depan.
+   - **Peringatan Stok Menipis:** Angka stok akan berubah warna menjadi peringatan kuning jika tersisa 5 buah atau kurang, memudahkan *Owner* untuk kulakan.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+3. **📈 Dashboard Laba/Rugi Real-time**
+   - Menghitung **Laba Kotor** otomatis (Omzet - Modal/Harga Beli).
+   - Fitur pencatatan **Pengeluaran Kas** (Bayar listrik, es batu, kuli).
+   - Mengkalkulasi **Laba Bersih** harian secara *real-time* di kartu metrik berdesain premium.
+
+4. **📶 Mode Offline (Lokal Database)**
+   - Transaksi tidak akan pernah tertunda karena sinyal jelek. Seluruh data (Produk, Transaksi, Pengeluaran) disimpan secara lokal di mesin kasir (Browser IndexedDB) dan bekerja 100% tanpa internet.
+
+---
+
+## 🛠️ Tech Stack (Teknologi yang Digunakan)
+
+- **Frontend Framework:** [React 18](https://react.dev/) + [Vite](https://vitejs.dev/)
+- **Styling:** [Tailwind CSS v3](https://tailwindcss.com/) (Custom Theme & *Glassmorphism*)
+- **Routing:** React Router v6
+- **State Management:** [Zustand](https://github.com/pmndrs/zustand) (Ringan dan cepat untuk keranjang belanja)
+- **Local Database:** [Dexie.js](https://dexie.org/) (Wrapper IndexedDB untuk operasi offline) + `dexie-react-hooks` untuk reaktivitas *real-time*.
+- **Icons:** [Lucide React](https://lucide.dev/)
+- **PWA (Progressive Web App):** *vite-plugin-pwa* (Dapat diinstal layaknya aplikasi native di Android/iOS).
+
+---
+
+## 📂 Struktur Proyek
+
+```text
+├── src/
+│   ├── components/
+│   │   └── layout/         # App Shell (Sidebar Tablet & Bottom Nav HP)
+│   ├── db/
+│   │   └── db.js           # Konfigurasi Dexie (Tabel Produk, Transaksi, Pengeluaran)
+│   ├── lib/
+│   │   └── utils.js        # Fungsi utilitas (Format Rupiah, Kalkulasi Hari, FIFO)
+│   ├── pages/
+│   │   ├── Auth/           # (Segera Hadir) Halaman Serah Terima Shift
+│   │   ├── Dashboard/      # Dashboard Laba/Rugi Harian
+│   │   ├── Inventory/      # Tabel Manajemen Stok & Barang Baru
+│   │   └── POS/            # Halaman Utama Kasir (Keranjang & Grid Produk)
+│   ├── store/
+│   │   └── useCartStore.js # Zustand Global State untuk Keranjang Belanja
+│   ├── App.jsx             # Routing Induk
+│   └── index.css           # Tailwind Directives & Font Import
+├── PRD.md                  # Dokumen Kebutuhan Produk (Spesifikasi Bisnis)
+└── tailwind.config.js      # Kustomisasi Warna & Font (Outfit)
+```
+
+---
+
+## ⚙️ Cara Instalasi & Menjalankan Aplikasi
+
+1. **Clone Repositori ini:**
+   ```bash
+   git clone git@github.com:ahmadhakimitsnaini/kelontong-hub.git
+   cd "dashboard kasir"
+   ```
+
+2. **Instal Dependensi:**
+   Pastikan Anda telah menginstal Node.js, lalu jalankan:
+   ```bash
+   npm install
+   ```
+
+3. **Jalankan *Development Server*:**
+   ```bash
+   npm run dev
+   ```
+   Aplikasi dapat diakses di `http://localhost:5173`. Cobalah buka menggunakan fitur *Device Emulation* di browser untuk melihat pengalaman Mobile.
+
+4. **Build untuk Produksi:**
+   ```bash
+   npm run build
+   ```
+
+---
+
+*Dikembangkan dengan standar arsitektur modern untuk merevolusi efisiensi warung tradisional.*
