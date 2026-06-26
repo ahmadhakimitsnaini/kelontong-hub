@@ -20,7 +20,6 @@ MaduraDigital adalah sistem manajemen operasional berbasis web yang dirancang kh
 - **Kriteria Penerimaan:**
   - Tombol kategori besar (Quick-Tap) untuk Sembako, Rokok, Bensin, dll.
   - Fitur serah terima shift dengan input saldo awal dan akhir.
-  - Toggle "Bebas Parkir" untuk transparansi harga.
 
 ### 2. Inventaris & FIFO Pintar
 
