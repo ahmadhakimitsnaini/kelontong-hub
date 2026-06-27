@@ -24,12 +24,27 @@ const POSPage = () => {
   // Ambil data produk asli dari database
   const dbProducts = useLiveQuery(() => db.products.toArray(), []) || []
 
-  // Ekstrak daftar kategori unik dari data produk
-  const categories = ['Semua', ...new Set(dbProducts.map(p => p.kategori).filter(Boolean))]
+  // Ekstrak daftar kategori unik dari data produk (Mencegah duplikat akibat spasi/huruf besar)
+  const categorySet = new Set()
+  const categories = ['Semua']
+  
+  dbProducts.forEach(p => {
+    if (p.kategori) {
+      const normalized = p.kategori.trim().toLowerCase()
+      if (!categorySet.has(normalized)) {
+        categorySet.add(normalized)
+        // Gunakan versi trim untuk UI
+        categories.push(p.kategori.trim())
+      }
+    }
+  })
 
   // Filter Logika
   const filteredProducts = dbProducts.filter(p => {
-    const matchCategory = activeCategory === 'Semua' || p.kategori === activeCategory
+    const productCat = p.kategori ? p.kategori.trim().toLowerCase() : ''
+    const activeCat = activeCategory.trim().toLowerCase()
+    
+    const matchCategory = activeCategory === 'Semua' || productCat === activeCat
     const matchSearch = p.nama.toLowerCase().includes(searchQuery.toLowerCase())
     return matchCategory && matchSearch
   })
