@@ -4,6 +4,7 @@ import POSPage from './pages/POS/POSPage'
 import DashboardPage from './pages/Dashboard/DashboardPage'
 import InventoryPage from './pages/Inventory/InventoryPage'
 import ShiftPage from './pages/Auth/ShiftPage'
+import PembukuanPage from './pages/Pembukuan/PembukuanPage'
 
 function App() {
   return (
@@ -25,6 +26,9 @@ function App() {
 
           {/* Halaman Manajemen Shift & Pengeluaran */}
           <Route path="/shift" element={<ShiftPage />} />
+
+          {/* Halaman Pembukuan (Accounting) */}
+          <Route path="/pembukuan" element={<PembukuanPage />} />
         </Route>
 
         {/* Fallback: Redirect ke Kasir jika URL tidak dikenal */}

@@ -11,56 +11,93 @@ import Dexie from 'dexie'
  */
 export const db = new Dexie('MaduraDigitalDB')
 
+// ── VERSI 1: Skema Awal ──────────────────────────────────────────────────────
 db.version(1).stores({
+  products: '++id, kategori, expiry_date, stok, nama',
+  transactions: '++id, shift_id, timestamp, synced',
+  shifts: '++id, user_id, start_time, end_time, synced',
+  expenses: '++id, shift_id, timestamp, synced',
+})
+
+// ── VERSI 2: Tambahan Tabel Modul Pembukuan ──────────────────────────────────
+db.version(2).stores({
   /**
-   * Tabel: products
-   * Menyimpan katalog produk secara lokal agar kasir bisa beroperasi offline.
-   *
-   * Kolom yang diindeks (untuk query cepat):
-   * - id          : Primary key (auto-increment)
-   * - kategori    : Untuk filter Quick-Tap di halaman Kasir
-   * - expiry_date : Untuk sorting dan alert FIFO Pintar
-   * - stok        : Untuk notifikasi stok minimum
+   * Tabel: products (tidak berubah)
    */
   products: '++id, kategori, expiry_date, stok, nama',
 
   /**
-   * Tabel: transactions
-   * Menyimpan antrean transaksi sementara saat offline.
-   * Setelah terkoneksi, akan di-sync ke Supabase.
-   *
-   * Kolom yang diindeks:
-   * - id          : Primary key (auto-increment)
-   * - shift_id    : Menghubungkan transaksi ke sesi shift tertentu
-   * - timestamp   : Untuk laporan harian dan sorting
-   * - synced      : Flag untuk menandai apakah sudah di-upload ke server (0 = belum, 1 = sudah)
+   * Tabel: transactions (tidak berubah)
    */
   transactions: '++id, shift_id, timestamp, synced',
 
   /**
-   * Tabel: shifts
-   * Menyimpan sesi kerja per shift (pergantian jaga).
-   *
-   * Kolom yang diindeks:
-   * - id          : Primary key (auto-increment)
-   * - user_id     : Siapa yang berjaga di shift ini
-   * - start_time  : Waktu mulai shift
-   * - end_time    : Waktu selesai shift
-   * - synced      : Flag sinkronisasi
+   * Tabel: shifts (tidak berubah)
    */
   shifts: '++id, user_id, start_time, end_time, synced',
 
   /**
-   * Tabel: expenses
-   * Menyimpan catatan pengeluaran operasional harian.
-   *
-   * Kolom yang diindeks:
-   * - id          : Primary key (auto-increment)
-   * - shift_id    : Pengeluaran terkait shift aktif
-   * - timestamp   : Waktu pencatatan
-   * - synced      : Flag sinkronisasi
+   * Tabel: expenses (tidak berubah)
    */
   expenses: '++id, shift_id, timestamp, synced',
+
+  /**
+   * Tabel: journal_entries (BARU)
+   * Menyimpan semua entri jurnal Double-Entry Bookkeeping.
+   * Di-generate otomatis oleh sistem saat transaksi/pengeluaran terjadi.
+   *
+   * Kolom yang diindeks:
+   * - id           : Primary key (auto-increment)
+   * - timestamp    : Untuk sorting kronologis di Buku Besar
+   * - account_name : Nama akun (Kas, Penjualan, HPP, Beban Operasional, dll)
+   * - type         : 'DEBIT' atau 'CREDIT'
+   * - reference_id : ID referensi ke tabel asal (transaction.id / expense.id)
+   * - reference_type : 'TRANSACTION' | 'EXPENSE' | 'DEBT_PAYMENT' | 'MANUAL'
+   */
+  journal_entries: '++id, timestamp, account_name, type, reference_id, reference_type',
+
+  /**
+   * Tabel: debts (BARU) — Hutang Supplier / Accounts Payable
+   *
+   * Kolom:
+   * - id            : Primary key
+   * - supplier_name : Nama supplier/agen
+   * - description   : Keterangan barang yang dihutang
+   * - amount        : Total tagihan awal
+   * - paid_amount   : Total yang sudah dibayar
+   * - due_date      : Tanggal jatuh tempo (timestamp)
+   * - status        : 'UNPAID' | 'PARTIAL' | 'PAID'
+   * - created_at    : Waktu pencatatan
+   */
+  debts: '++id, supplier_name, due_date, status, created_at',
+
+  /**
+   * Tabel: receivables (BARU) — Kasbon Pelanggan / Accounts Receivable
+   *
+   * Kolom:
+   * - id             : Primary key
+   * - customer_name  : Nama pelanggan
+   * - customer_phone : No HP untuk kirim tagihan via WA (opsional)
+   * - amount         : Total hutang yang belum dibayar
+   * - credit_limit   : Batas maksimal kasbon (opsional)
+   * - last_updated   : Waktu terakhir ada aktivitas
+   * - status         : 'ACTIVE' | 'SETTLED'
+   */
+  receivables: '++id, customer_name, status, last_updated',
+
+  /**
+   * Tabel: cash_reconciliation (BARU) — Rekonsiliasi / Tutup Kasir
+   *
+   * Kolom:
+   * - id               : Primary key
+   * - timestamp        : Waktu tutup kasir
+   * - shift_id         : Referensi ke sesi shift
+   * - system_balance   : Total kas menurut sistem (dari transaksi Tunai)
+   * - physical_balance : Uang fisik yang dihitung kasir
+   * - difference       : Selisih (physical - system); negatif = kurang
+   * - note             : Keterangan jika ada selisih
+   */
+  cash_reconciliation: '++id, timestamp, shift_id',
 })
 
 export default db
