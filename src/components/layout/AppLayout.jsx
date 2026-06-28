@@ -10,10 +10,13 @@ import {
   WifiOff,
   BookOpen,
 } from "lucide-react";
+import { useLiveQuery } from "dexie-react-hooks";
+import db from "../../db/db";
 
 const AppLayout = () => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const location = useLocation();
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   // Pantau status koneksi internet untuk fitur Offline Sync
   useEffect(() => {
@@ -28,6 +31,28 @@ const AppLayout = () => {
       window.removeEventListener("offline", handleOffline);
     };
   }, []);
+
+  // Update Jam secara real-time
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Ambil status shift aktif secara real-time dari database
+  const activeShift = useLiveQuery(async () => {
+    const shifts = await db.shifts.orderBy('id').reverse().toArray();
+    const latest = shifts[0];
+    return (latest && !latest.waktu_selesai) ? latest : null;
+  });
+
+  const formattedDate = currentTime.toLocaleDateString('id-ID', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+  });
+  const formattedTime = currentTime.toLocaleTimeString('id-ID', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  });
 
   // Menu Navigasi
   const navItems = [
@@ -82,13 +107,15 @@ const AppLayout = () => {
           <div className="flex items-center gap-3">
             {/* Hanya tampil di Mobile */}
             <div className="md:hidden w-8 h-8 bg-primary-500 rounded-lg flex items-center justify-center text-white font-bold text-sm shadow-sm">
-              M
+              F
             </div>
             <div>
               <h2 className="font-semibold text-gray-800 leading-tight">
-                Shift Aktif: Budi
+                Shift Aktif: {activeShift ? <span className="text-primary-600 font-bold">{activeShift.nama_kasir}</span> : <span className="text-red-500 font-bold">Belum Buka Shift</span>}
               </h2>
-              <p className="text-xs text-gray-500">27 Juni 2026</p>
+              <p className="text-xs text-gray-500 font-medium mt-0.5">
+                {formattedDate} • <span className="text-gray-700">{formattedTime}</span>
+              </p>
             </div>
           </div>
 
