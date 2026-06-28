@@ -82,7 +82,7 @@ const POSPage = () => {
           const product = await db.products.get(item.id)
           if (product) {
             await db.products.update(item.id, {
-              stok: Math.max(0, product.stok - item.quantity)
+              stok_etalase: Math.max(0, (product.stok_etalase || 0) - item.quantity)
             })
           }
         }
@@ -152,12 +152,12 @@ const POSPage = () => {
                 className="group flex flex-col bg-surface rounded-2xl p-4 text-left border border-gray-100 shadow-sm hover:shadow-md hover:border-primary-200 transition-all active:scale-95 relative overflow-hidden"
               >
                 {/* Indikator Stok */}
-                <div className={`absolute top-0 left-0 w-full h-1 ${product.stok <= 10 ? 'bg-red-400' : 'bg-green-400'}`} />
+                <div className={`absolute top-0 left-0 w-full h-1 ${(product.stok_etalase || 0) <= 5 ? 'bg-red-400' : 'bg-green-400'}`} />
                 
                 <h3 className="font-semibold text-gray-800 leading-tight mb-1 line-clamp-2 mt-1">
                   {product.nama}
                 </h3>
-                <p className="text-xs text-gray-500 mb-4">{product.kategori} • Stok: {product.stok}</p>
+                <p className="text-xs text-gray-500 mb-4">{product.kategori} • Eta: {product.stok_etalase || 0}</p>
                 <div className="mt-auto pt-2 flex items-center justify-between w-full">
                   <span className="font-bold text-primary-600 text-lg">
                     {formatRupiah(product.harga_jual)}
