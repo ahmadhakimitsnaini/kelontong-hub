@@ -5,37 +5,56 @@ import {
   ArrowUpRight, ArrowDownRight, BarChart3, Scale, Activity, Users, X,
   CalendarDays, ArrowRight
 } from 'lucide-react'
+import { 
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
+  PieChart, Pie, Cell, BarChart, Bar, Legend 
+} from 'recharts'
 import { useLiveQuery } from 'dexie-react-hooks'
 import db from '../../db/db'
-import { formatRupiah, formatTanggal, formatTanggalSingkat } from '../../lib/utils'
+import { formatRupiah, formatTanggal, formatTanggalSingkat, TIME_RANGE_OPTIONS, getTimeRangeBounds } from '../../lib/utils'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
-
-const TIME_OPTIONS = ['Bulan Ini', '7 Hari Terakhir', 'Hari Ini', 'Semua Waktu']
-
-const getRange = (range) => {
-  const now = new Date()
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime()
-  if (range === 'Hari Ini') {
-    return { start: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime(), end, useBetween: true }
-  }
-  if (range === '7 Hari Terakhir') {
-    const p = new Date(now); p.setDate(now.getDate() - 6)
-    return { start: new Date(p.getFullYear(), p.getMonth(), p.getDate(), 0, 0, 0, 0).getTime(), end, useBetween: true }
-  }
-  if (range === 'Bulan Ini') {
-    return { start: new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).getTime(), end, useBetween: true }
-  }
-  return { start: 0, end: Infinity, useBetween: false }
-}
 
 // Hitung berapa hari lagi jatuh tempo
 const getDueDays = (due_date) => {
   const today = new Date(); today.setHours(0, 0, 0, 0)
   const due = new Date(due_date); due.setHours(0, 0, 0, 0)
   return Math.ceil((due - today) / (1000 * 60 * 60 * 24))
+}
+
+// Agregasi data per tanggal untuk grafik tren
+const groupByDate = (transactions, expenses) => {
+  const data = {}
+
+  const getISODate = (ts) => {
+    const d = new Date(ts)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
+  ;(transactions || []).forEach(trx => {
+    const iso = getISODate(trx.timestamp)
+    if (!data[iso]) data[iso] = { iso, omzet: 0, beban: 0, hpp: 0 }
+    data[iso].omzet += trx.total
+    
+    let trxHpp = 0
+    ;(trx.items || []).forEach(item => { trxHpp += (item.harga_beli || 0) * item.quantity })
+    data[iso].hpp += trxHpp
+  })
+
+  ;(expenses || []).forEach(exp => {
+    const iso = getISODate(exp.timestamp)
+    if (!data[iso]) data[iso] = { iso, omzet: 0, beban: 0, hpp: 0 }
+    data[iso].beban += exp.amount
+  })
+
+  return Object.values(data).sort((a, b) => a.iso.localeCompare(b.iso)).map(item => {
+    const dateObj = new Date(item.iso)
+    item.date = dateObj.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })
+    item.labaBersih = item.omzet - item.hpp - item.beban
+    return item
+  })
 }
 
 // Label status jatuh tempo beserta style-nya
@@ -97,7 +116,7 @@ const SummaryCard = ({ label, value, icon: Icon, colorCls, sub, mom }) => (
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB: LAPORAN LABA RUGI (Profit & Loss)
 // ─────────────────────────────────────────────────────────────────────────────
-const TabLabaRugi = ({ transactions, expenses, allTransactions, timeRange }) => {
+const TabLabaRugi = ({ transactions, expenses, allTransactions, timeFilter }) => {
   // Kalkulasi P&L
   let pendapatanKotor = 0, hpp = 0, bebanOperasional = 0
   ;(transactions || []).forEach(trx => {
@@ -115,6 +134,14 @@ const TabLabaRugi = ({ transactions, expenses, allTransactions, timeRange }) => 
   const prevOmzet = getPrevMonthTotal(allTransactions, t => t.total)
   const momOmzet = formatMoM(pendapatanKotor, prevOmzet)
 
+  // Data Chart
+  const chartData = useMemo(() => groupByDate(transactions, expenses), [transactions, expenses])
+  const pieData = [
+    { name: 'HPP', value: hpp, color: '#f97316' }, // orange
+    { name: 'Beban Opr.', value: bebanOperasional, color: '#ef4444' }, // red
+    { name: 'Laba Bersih', value: labaBersih > 0 ? labaBersih : 0, color: '#22c55e' } // green
+  ]
+
   // Waterfall bar (persentase terhadap omzet)
   const barPct = (val) => pendapatanKotor > 0 ? Math.min(100, Math.abs((val / pendapatanKotor) * 100)) : 0
 
@@ -128,7 +155,7 @@ const TabLabaRugi = ({ transactions, expenses, allTransactions, timeRange }) => 
         ['Beban Operasional', `-${bebanOperasional}`],
         ['Laba Bersih', labaBersih],
       ],
-      `laporan-laba-rugi-${timeRange.replace(/ /g, '-')}.csv`
+      `laporan-laba-rugi-${timeFilter.type.replace(/ /g, '-')}.csv`
     )
   }
 
@@ -142,44 +169,104 @@ const TabLabaRugi = ({ transactions, expenses, allTransactions, timeRange }) => 
         <SummaryCard label="Laba Bersih" value={formatRupiah(labaBersih)} icon={labaBersih >= 0 ? TrendingUp : TrendingDown} colorCls={labaBersih >= 0 ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'} sub={`Margin ${marginBersih}%`} />
       </div>
 
-      {/* Waterfall Breakdown */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="font-bold text-gray-800">Struktur Laba Rugi</h3>
-          <button onClick={handleExport} className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-blue-600 border border-gray-200 hover:border-blue-300 px-3 py-1.5 rounded-lg transition-colors">
-            <Download className="w-3.5 h-3.5" /> Ekspor CSV
-          </button>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        {/* Trend Line Chart */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <h3 className="font-bold text-gray-800 mb-6">Tren Pendapatan & Laba</h3>
+          {chartData.length === 0 ? (
+            <div className="h-[300px] flex items-center justify-center text-gray-400 text-sm">Belum ada data untuk periode ini</div>
+          ) : (
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorOmzet" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorLaba" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} tickFormatter={(val) => `Rp${val/1000}k`} />
+                  <RechartsTooltip formatter={(val) => formatRupiah(val)} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Legend verticalAlign="top" height={36} iconType="circle" />
+                  <Area type="monotone" dataKey="omzet" name="Omzet" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorOmzet)" />
+                  <Area type="monotone" dataKey="labaBersih" name="Laba Bersih" stroke="#22c55e" strokeWidth={2} fillOpacity={1} fill="url(#colorLaba)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
-        <div className="space-y-4">
-          {[
-            { label: 'Pendapatan Kotor (Omzet)', value: pendapatanKotor, color: 'bg-blue-500', textColor: 'text-blue-700', prefix: '+' },
-            { label: 'HPP (Harga Pokok Penjualan)', value: hpp, color: 'bg-orange-400', textColor: 'text-orange-700', prefix: '–' },
-            { label: 'Laba Kotor', value: labaKotor, color: 'bg-indigo-500', textColor: 'text-indigo-700', prefix: '=' },
-            { label: 'Beban Operasional', value: bebanOperasional, color: 'bg-red-400', textColor: 'text-red-700', prefix: '–' },
-            { label: 'Laba Bersih', value: labaBersih, color: labaBersih >= 0 ? 'bg-green-500' : 'bg-red-500', textColor: labaBersih >= 0 ? 'text-green-700' : 'text-red-700', prefix: '=' },
-          ].map(row => (
-            <div key={row.label} className="flex items-center gap-4">
-              <div className="w-4 text-xs font-bold text-gray-400 shrink-0 text-center">{row.prefix}</div>
-              <div className="flex-1">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-sm text-gray-700">{row.label}</span>
-                  <span className={`text-sm font-bold ${row.textColor}`}>{formatRupiah(Math.abs(row.value))}</span>
-                </div>
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div className={`h-full ${row.color} rounded-full transition-all duration-700`} style={{ width: `${barPct(row.value)}%` }} />
+
+        {/* Waterfall Breakdown */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="font-bold text-gray-800">Struktur Laba Rugi</h3>
+            <button onClick={handleExport} className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-blue-600 border border-gray-200 hover:border-blue-300 px-3 py-1.5 rounded-lg transition-colors">
+              <Download className="w-3.5 h-3.5" /> Ekspor
+            </button>
+          </div>
+          
+          <div className="space-y-4 mb-6">
+            {[
+              { label: 'Pendapatan Kotor (Omzet)', value: pendapatanKotor, color: 'bg-blue-500', textColor: 'text-blue-700', prefix: '+' },
+              { label: 'HPP (Harga Pokok Penjualan)', value: hpp, color: 'bg-orange-400', textColor: 'text-orange-700', prefix: '–' },
+              { label: 'Laba Kotor', value: labaKotor, color: 'bg-indigo-500', textColor: 'text-indigo-700', prefix: '=' },
+              { label: 'Beban Operasional', value: bebanOperasional, color: 'bg-red-400', textColor: 'text-red-700', prefix: '–' },
+              { label: 'Laba Bersih', value: labaBersih, color: labaBersih >= 0 ? 'bg-green-500' : 'bg-red-500', textColor: labaBersih >= 0 ? 'text-green-700' : 'text-red-700', prefix: '=' },
+            ].map(row => (
+              <div key={row.label} className="flex items-center gap-4">
+                <div className="w-4 text-xs font-bold text-gray-400 shrink-0 text-center">{row.prefix}</div>
+                <div className="flex-1">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-sm text-gray-700">{row.label}</span>
+                    <span className={`text-sm font-bold ${row.textColor}`}>{formatRupiah(Math.abs(row.value))}</span>
+                  </div>
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className={`h-full ${row.color} rounded-full transition-all duration-700`} style={{ width: `${barPct(row.value)}%` }} />
+                  </div>
                 </div>
               </div>
+            ))}
+          </div>
+
+          {/* Pie Chart Distribusi Pendapatan */}
+          <div className="mt-auto pt-6 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-center gap-6">
+            <div className="h-[140px] w-[140px] shrink-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={2} dataKey="value" stroke="none">
+                    {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                  </Pie>
+                  <RechartsTooltip formatter={(val) => formatRupiah(val)} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
-          ))}
+            <div className="space-y-2 text-sm">
+              <p className="font-semibold text-gray-800 mb-3">Distribusi Omzet</p>
+              {pieData.map((entry, index) => (
+                <div key={index} className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
+                    <span className="text-gray-600">{entry.name}</span>
+                  </div>
+                  <span className="font-semibold text-gray-900">
+                    {pendapatanKotor > 0 ? ((entry.value / pendapatanKotor) * 100).toFixed(1) : 0}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TAB: NERACA KEUANGAN (Balance Sheet)
-// ─────────────────────────────────────────────────────────────────────────────
 const TabNeraca = ({ transactions, debts, receivables, products }) => {
   // ASET
   const kasTotal = (transactions || []).reduce((sum, t) => {
@@ -196,6 +283,18 @@ const TabNeraca = ({ transactions, debts, receivables, products }) => {
   // EKUITAS (= Aset - Kewajiban)
   const ekuitas = totalAset - totalHutang
   const isBalanced = Math.abs(totalAset - (totalHutang + ekuitas)) < 1
+
+  // Data Grafik
+  const asetData = [
+    { name: 'Kas Tunai', value: kasTotal, color: '#10b981' }, // emerald
+    { name: 'Stok Barang', value: nilaiStok, color: '#3b82f6' }, // blue
+    { name: 'Piutang', value: totalPiutang, color: '#f59e0b' } // amber
+  ].filter(d => d.value > 0)
+
+  const strukturData = [
+    { name: 'Kewajiban', value: totalHutang, fill: '#ef4444' }, // red
+    { name: 'Ekuitas', value: ekuitas > 0 ? ekuitas : 0, fill: '#10b981' }, // emerald
+  ]
 
   return (
     <div className="space-y-6">
@@ -215,11 +314,67 @@ const TabNeraca = ({ transactions, debts, receivables, products }) => {
         </div>
       </div>
 
-      {/* Split View */}
+      {/* Bagian Grafik Visualisasi */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Grafik Komposisi Aset */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <h3 className="font-bold text-gray-800 mb-4">Komposisi Aset</h3>
+          {asetData.length === 0 ? (
+            <div className="h-[200px] flex items-center justify-center text-gray-400 text-sm">Belum ada aset</div>
+          ) : (
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
+              <div className="h-[180px] w-[180px] shrink-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={asetData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} dataKey="value" stroke="none">
+                      {asetData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                    </Pie>
+                    <RechartsTooltip formatter={(val) => formatRupiah(val)} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="space-y-3 w-full sm:w-auto">
+                {asetData.map((entry, index) => (
+                  <div key={index} className="flex flex-col">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
+                      <span className="text-xs text-gray-500 font-medium">{entry.name}</span>
+                    </div>
+                    <span className="text-sm font-bold text-gray-900">{formatRupiah(entry.value)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Grafik Struktur Modal */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <h3 className="font-bold text-gray-800 mb-4">Struktur Modal (Kewajiban vs Ekuitas)</h3>
+          <div className="h-[180px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={strukturData} layout="vertical" margin={{ top: 0, right: 30, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                <XAxis type="number" axisLine={false} tickLine={false} tickFormatter={(val) => `Rp${val/1000}k`} tick={{ fontSize: 11, fill: '#64748b' }} />
+                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#475569', fontWeight: 500 }} width={80} />
+                <RechartsTooltip formatter={(val) => formatRupiah(val)} cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={32}>
+                  {strukturData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="text-xs text-gray-500 text-center mt-4">Membandingkan besaran hutang dengan modal bersih.</p>
+        </div>
+      </div>
+
+      {/* Split View Cards (Original) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* ASET */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><Wallet className="w-4 h-4 text-blue-500" /> ASET (Harta)</h3>
+          <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><Wallet className="w-4 h-4 text-blue-500" /> Rincian Aset (Harta)</h3>
           <div className="space-y-3">
             {[
               { label: 'Kas Tunai (dari Penjualan)', value: kasTotal, sub: 'Akumulasi transaksi tunai' },
@@ -240,7 +395,7 @@ const TabNeraca = ({ transactions, debts, receivables, products }) => {
 
         {/* KEWAJIBAN + EKUITAS */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><Scale className="w-4 h-4 text-red-500" /> KEWAJIBAN & EKUITAS</h3>
+          <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><Scale className="w-4 h-4 text-red-500" /> Rincian Kewajiban & Ekuitas</h3>
           <div className="space-y-3">
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Kewajiban (Hutang)</p>
             <div className="flex justify-between items-start p-3 bg-red-50/50 rounded-xl">
@@ -266,7 +421,7 @@ const TabNeraca = ({ transactions, debts, receivables, products }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB: BUKU BESAR (General Ledger)
 // ─────────────────────────────────────────────────────────────────────────────
-const TabBukuBesar = ({ transactions, expenses, timeRange }) => {
+const TabBukuBesar = ({ transactions, expenses, timeFilter }) => {
   // Generate jurnal otomatis dari transaksi & pengeluaran
   const entries = useMemo(() => {
     const rows = []
@@ -316,7 +471,7 @@ const TabBukuBesar = ({ transactions, expenses, timeRange }) => {
         new Date(e.timestamp).toLocaleString('id-ID'),
         e.ref, e.account, `"${e.description}"`, e.debet, e.kredit
       ]),
-      `buku-besar-${timeRange.replace(/ /g, '-')}.csv`
+      `buku-besar-${timeFilter.type.replace(/ /g, '-')}.csv`
     )
   }
 
@@ -427,6 +582,21 @@ const TabHutang = ({ debts, refetch }) => {
   const paid = (debts || []).filter(d => d.status === 'PAID')
   const totalTagihan = unpaid.reduce((s, d) => s + (d.amount - (d.paid_amount || 0)), 0)
 
+  // Data Grafik Aging Schedule
+  const agingData = [
+    { name: 'Belum Jatuh Tempo', value: 0, fill: '#3b82f6' },
+    { name: 'Terlambat 1-14 hari', value: 0, fill: '#f59e0b' },
+    { name: 'Terlambat > 14 hari', value: 0, fill: '#ef4444' }
+  ]
+  unpaid.forEach(debt => {
+    const sisa = debt.amount - (debt.paid_amount || 0)
+    const dueDays = getDueDays(debt.due_date)
+    if (dueDays >= 0) agingData[0].value += sisa
+    else if (dueDays >= -14) agingData[1].value += sisa
+    else agingData[2].value += sisa
+  })
+  const hasAgingData = agingData.some(d => d.value > 0)
+
   return (
     <div className="space-y-5">
       {/* Summary + Tombol Tambah */}
@@ -442,6 +612,28 @@ const TabHutang = ({ debts, refetch }) => {
           <Plus className="w-4 h-4" /> Catat Hutang Baru
         </button>
       </div>
+
+      {/* Grafik Aging Schedule */}
+      {hasAgingData && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <h3 className="font-bold text-gray-800 mb-4">Profil Risiko Hutang (Aging Schedule)</h3>
+          <div className="h-[200px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={agingData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} tickFormatter={(val) => `Rp${val/1000}k`} />
+                <RechartsTooltip formatter={(val) => formatRupiah(val)} cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={40}>
+                  {agingData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
       {/* Form Tambah */}
       {showForm && (
@@ -586,6 +778,13 @@ const TabPiutang = ({ receivables }) => {
   const settled = (receivables || []).filter(r => r.status === 'SETTLED')
   const totalPiutang = active.reduce((s, r) => s + r.amount, 0)
 
+  // Data Top Piutang
+  const topPiutangData = active
+    .slice()
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 5)
+    .map(r => ({ name: r.customer_name, value: r.amount, fill: '#f59e0b' }))
+
   return (
     <div className="space-y-5">
       {/* Summary + Tambah */}
@@ -601,6 +800,28 @@ const TabPiutang = ({ receivables }) => {
           <Plus className="w-4 h-4" /> Tambah Kasbon
         </button>
       </div>
+
+      {/* Grafik Top Piutang */}
+      {topPiutangData.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <h3 className="font-bold text-gray-800 mb-4">Top 5 Kasbon Pelanggan</h3>
+          <div className="h-[200px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={topPiutangData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                <XAxis type="number" axisLine={false} tickLine={false} tickFormatter={(val) => `Rp${val/1000}k`} tick={{ fontSize: 11, fill: '#64748b' }} />
+                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#475569', fontWeight: 500 }} width={100} />
+                <RechartsTooltip formatter={(val) => formatRupiah(val)} cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={24}>
+                  {topPiutangData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
       {/* Form */}
       {showForm && (
@@ -850,26 +1071,32 @@ const TABS = [
 
 const PembukuanPage = () => {
   const [activeTab, setActiveTab] = useState('laba-rugi')
-  const [timeRange, setTimeRange] = useState('Bulan Ini')
+  const [timeFilter, setTimeFilter] = useState({ type: 'Bulan Ini', customStart: '', customEnd: '' })
 
-  const { start, end, useBetween } = getRange(timeRange)
+  const { start, end, useBetween } = getTimeRangeBounds(timeFilter)
 
-  // Data transaksi & pengeluaran (difilter oleh timeRange)
+  // Data transaksi & pengeluaran (difilter oleh timeFilter)
   const transactions = useLiveQuery(
-    () => useBetween
-      ? db.transactions.where('timestamp').between(start, end).reverse().toArray()
-      : db.transactions.orderBy('timestamp').reverse().toArray(),
-    [timeRange]
+    () => {
+      if (timeFilter.type === 'Pilih Tanggal...' && (!timeFilter.customStart || !timeFilter.customEnd)) return []
+      return useBetween
+        ? db.transactions.where('timestamp').between(start, end).reverse().toArray()
+        : db.transactions.orderBy('timestamp').reverse().toArray()
+    },
+    [timeFilter]
   )
 
   // Semua transaksi (untuk MoM)
   const allTransactions = useLiveQuery(() => db.transactions.orderBy('timestamp').toArray(), [])
 
   const expenses = useLiveQuery(
-    () => useBetween
-      ? db.expenses.where('timestamp').between(start, end).reverse().toArray()
-      : db.expenses.orderBy('timestamp').reverse().toArray(),
-    [timeRange]
+    () => {
+      if (timeFilter.type === 'Pilih Tanggal...' && (!timeFilter.customStart || !timeFilter.customEnd)) return []
+      return useBetween
+        ? db.expenses.where('timestamp').between(start, end).reverse().toArray()
+        : db.expenses.orderBy('timestamp').reverse().toArray()
+    },
+    [timeFilter]
   )
 
   // Data yang tidak bergantung pada filter waktu
@@ -889,15 +1116,24 @@ const PembukuanPage = () => {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Pembukuan</h1>
-            <p className="text-gray-500 text-sm mt-0.5">Laporan keuangan & manajemen kas — <span className="font-medium text-gray-700">{timeRange}</span></p>
+            <p className="text-gray-500 text-sm mt-0.5">Laporan keuangan & manajemen kas — <span className="font-medium text-gray-700">{timeFilter.type}</span></p>
           </div>
           {/* Filter hanya tampil di tab laporan */}
           {['laba-rugi', 'buku-besar'].includes(activeTab) && (
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 shadow-sm self-start sm:self-auto">
-              <CalendarDays className="w-4 h-4 text-gray-400 shrink-0" />
-              <select value={timeRange} onChange={e => setTimeRange(e.target.value)} className="bg-transparent text-sm font-medium text-gray-700 focus:outline-none cursor-pointer">
-                {TIME_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-              </select>
+            <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 shadow-sm">
+                <CalendarDays className="w-4 h-4 text-gray-400 shrink-0" />
+                <select value={timeFilter.type} onChange={e => setTimeFilter({...timeFilter, type: e.target.value})} className="bg-transparent text-sm font-medium text-gray-700 focus:outline-none cursor-pointer">
+                  {TIME_RANGE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              {timeFilter.type === 'Pilih Tanggal...' && (
+                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 shadow-sm">
+                  <input type="date" value={timeFilter.customStart} onChange={e => setTimeFilter({...timeFilter, customStart: e.target.value})} className="bg-transparent text-sm text-gray-700 focus:outline-none" />
+                  <span className="text-gray-400 text-xs">sd</span>
+                  <input type="date" value={timeFilter.customEnd} onChange={e => setTimeFilter({...timeFilter, customEnd: e.target.value})} className="bg-transparent text-sm text-gray-700 focus:outline-none" />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -932,13 +1168,13 @@ const PembukuanPage = () => {
       {/* ── KONTEN TAB ──────────────────────────────────────────────────────── */}
       <div className="flex-1 p-4 md:p-6 lg:p-8">
         {activeTab === 'laba-rugi' && (
-          <TabLabaRugi transactions={transactions} expenses={expenses} allTransactions={allTransactions} timeRange={timeRange} />
+          <TabLabaRugi transactions={transactions} expenses={expenses} allTransactions={allTransactions} timeFilter={timeFilter} />
         )}
         {activeTab === 'neraca' && (
           <TabNeraca transactions={allTransactions} debts={debts} receivables={receivables} products={products} />
         )}
         {activeTab === 'buku-besar' && (
-          <TabBukuBesar transactions={transactions} expenses={expenses} timeRange={timeRange} />
+          <TabBukuBesar transactions={transactions} expenses={expenses} timeFilter={timeFilter} />
         )}
         {activeTab === 'hutang' && (
           <TabHutang debts={debts} />

@@ -2,62 +2,19 @@ import React, { useState } from 'react'
 import { Wallet, TrendingUp, TrendingDown, DollarSign, Receipt, Plus, Trash2, CalendarDays } from 'lucide-react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import db from '../../db/db'
-import { formatRupiah, formatTanggal } from '../../lib/utils'
-
-// ── KONSTANTA PILIHAN RENTANG WAKTU ─────────────────────────────────────────
-const TIME_RANGE_OPTIONS = ['Hari Ini', '7 Hari Terakhir', 'Bulan Ini', 'Semua Waktu']
-
-// ── HELPER: MENGHITUNG RENTANG TIMESTAMP BERDASARKAN PILIHAN ────────────────
-// Dibuat di luar komponen agar tidak dibuat ulang setiap render
-const getTimeRange = (range) => {
-  const now = new Date()
-  // Akhir selalu "akhir hari ini"
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime()
-
-  if (range === 'Hari Ini') {
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime()
-    return { start, end, useBetween: true }
-  }
-
-  if (range === '7 Hari Terakhir') {
-    const past = new Date(now)
-    past.setDate(now.getDate() - 6) // 6 hari ke belakang + hari ini = 7 hari total
-    const start = new Date(past.getFullYear(), past.getMonth(), past.getDate(), 0, 0, 0, 0).getTime()
-    return { start, end, useBetween: true }
-  }
-
-  if (range === 'Bulan Ini') {
-    const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).getTime()
-    return { start, end, useBetween: true }
-  }
-
-  // 'Semua Waktu': tidak gunakan filter between agar aman dari timestamp 0 / negatif
-  return { start: 0, end: Infinity, useBetween: false }
-}
-
-// ── HELPER: FORMAT WAKTU ADAPTIF ────────────────────────────────────────────
-// Jika filter bukan "Hari Ini", tampilkan tanggal + jam agar tidak ambigu
-const formatWaktu = (timestamp, timeRange) => {
-  const date = new Date(timestamp)
-  const timeStr = date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-
-  if (timeRange === 'Hari Ini') {
-    return timeStr
-  }
-
-  const dateStr = date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
-  return `${dateStr}, ${timeStr}`
-}
+import { formatRupiah, formatTanggal, TIME_RANGE_OPTIONS, getTimeRangeBounds, formatWaktu } from '../../lib/utils'
 
 // ── HELPER: LABEL DESKRIPSI DINAMIS ─────────────────────────────────────────
-const getRangeLabel = (range) => {
+const getRangeLabel = (filter) => {
+  const type = typeof filter === 'string' ? filter : filter?.type
   const labels = {
     'Hari Ini': `hari ini: ${formatTanggal(new Date().toISOString())}`,
     '7 Hari Terakhir': '7 hari terakhir',
     'Bulan Ini': `bulan ${new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}`,
-    'Semua Waktu': 'semua periode'
+    'Semua Waktu': 'semua periode',
+    'Pilih Tanggal...': 'rentang kustom'
   }
-  return labels[range] || range
+  return labels[type] || type
 }
 
 // ── HELPER: BADGE METODE PEMBAYARAN ─────────────────────────────────────────
@@ -78,33 +35,32 @@ const PaymentBadge = ({ method }) => {
 
 const DashboardPage = () => {
   // ── 1. STATE FILTER RENTANG WAKTU ────────────────────────────────────────
-  const [timeRange, setTimeRange] = useState('Hari Ini')
+  const [timeFilter, setTimeFilter] = useState({ type: 'Hari Ini', customStart: '', customEnd: '' })
 
   // ── 2. KALKULASI RENTANG WAKTU BERDASARKAN PILIHAN ───────────────────────
-  const { start, end, useBetween } = getTimeRange(timeRange)
+  const { start, end, useBetween } = getTimeRangeBounds(timeFilter)
 
   // ── 3. MENGAMBIL DATA SECARA REAL-TIME DARI DEXIE ────────────────────────
-  // Dependency array [timeRange] memastikan query dijalankan ulang saat filter berubah
-
   const transactions = useLiveQuery(
     () => {
+      if (timeFilter.type === 'Pilih Tanggal...' && (!timeFilter.customStart || !timeFilter.customEnd)) return []
       if (useBetween) {
         return db.transactions.where('timestamp').between(start, end).reverse().toArray()
       }
-      // Semua Waktu: ambil semua, urutkan terbaru di atas
       return db.transactions.orderBy('timestamp').reverse().toArray()
     },
-    [timeRange]
+    [timeFilter]
   )
 
   const expenses = useLiveQuery(
     () => {
+      if (timeFilter.type === 'Pilih Tanggal...' && (!timeFilter.customStart || !timeFilter.customEnd)) return []
       if (useBetween) {
         return db.expenses.where('timestamp').between(start, end).reverse().toArray()
       }
       return db.expenses.orderBy('timestamp').reverse().toArray()
     },
-    [timeRange]
+    [timeFilter]
   )
 
   // ── 4. LOGIKA KALKULASI LABA / RUGI ──────────────────────────────────────
@@ -177,22 +133,42 @@ const DashboardPage = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Dashboard Keuangan</h1>
           <p className="text-gray-500 text-sm mt-1">
-            Ringkasan transaksi dan laba rugi untuk <span className="font-medium text-gray-700">{getRangeLabel(timeRange)}</span>
+            Ringkasan transaksi dan laba rugi untuk <span className="font-medium text-gray-700">{getRangeLabel(timeFilter)}</span>
           </p>
         </div>
 
         {/* Dropdown Filter Rentang Waktu */}
-        <div className="flex items-center gap-2 bg-surface border border-gray-200 rounded-xl px-3 py-2 shadow-sm self-start sm:self-auto">
-          <CalendarDays className="w-4 h-4 text-gray-400 shrink-0" />
-          <select
-            value={timeRange}
-            onChange={(e) => setTimeRange(e.target.value)}
-            className="bg-transparent text-sm font-medium text-gray-700 focus:outline-none cursor-pointer pr-1"
-          >
-            {TIME_RANGE_OPTIONS.map(opt => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <div className="flex items-center gap-2 bg-surface border border-gray-200 rounded-xl px-3 py-2 shadow-sm">
+            <CalendarDays className="w-4 h-4 text-gray-400 shrink-0" />
+            <select
+              value={timeFilter.type}
+              onChange={(e) => setTimeFilter({ ...timeFilter, type: e.target.value })}
+              className="bg-transparent text-sm font-medium text-gray-700 focus:outline-none cursor-pointer pr-1"
+            >
+              {TIME_RANGE_OPTIONS.map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          </div>
+          
+          {timeFilter.type === 'Pilih Tanggal...' && (
+            <div className="flex items-center gap-2 bg-surface border border-gray-200 rounded-xl px-3 py-1.5 shadow-sm">
+              <input 
+                type="date" 
+                value={timeFilter.customStart} 
+                onChange={(e) => setTimeFilter({ ...timeFilter, customStart: e.target.value })}
+                className="bg-transparent text-sm text-gray-700 focus:outline-none"
+              />
+              <span className="text-gray-400 text-xs">sd</span>
+              <input 
+                type="date" 
+                value={timeFilter.customEnd} 
+                onChange={(e) => setTimeFilter({ ...timeFilter, customEnd: e.target.value })}
+                className="bg-transparent text-sm text-gray-700 focus:outline-none"
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -229,17 +205,14 @@ const DashboardPage = () => {
 
         {/* Kartu Pengeluaran */}
         <div className="bg-surface p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between hover:shadow-md transition-shadow">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <p className="text-sm font-medium text-gray-500 mb-1">Pengeluaran Kas</p>
-              <h3 className="text-2xl font-bold text-gray-900">{formatRupiah(totalPengeluaran)}</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2"><Receipt className="w-4 h-4 text-red-500" /> Pengeluaran — <span className="text-gray-500 font-normal capitalize">{timeFilter.type}</span></h3>
+              <p className="text-sm font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-md">{formatRupiah(totalPengeluaran)}</p>
             </div>
             <div className="p-2 bg-orange-50 text-orange-600 rounded-xl">
               <TrendingDown className="w-5 h-5" />
             </div>
           </div>
-          <p className="text-xs text-gray-400">Total biaya operasional periode ini</p>
-        </div>
 
         {/* Kartu LABA BERSIH (Paling Menonjol) */}
         <div className={`p-5 rounded-2xl shadow-lg flex flex-col justify-between transform transition-all hover:-translate-y-1 ${
@@ -308,7 +281,7 @@ const DashboardPage = () => {
           {/* List Pengeluaran (Dinamis sesuai Filter) */}
           <div className="bg-surface p-5 rounded-2xl shadow-sm border border-gray-100">
             <h3 className="text-sm font-bold text-gray-900 mb-4">
-              Pengeluaran — <span className="text-gray-500 font-normal capitalize">{timeRange}</span>
+              Pengeluaran — <span className="text-gray-500 font-normal capitalize">{timeFilter.type}</span>
             </h3>
             {!expenses || expenses.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-4">Belum ada pengeluaran dicatat.</p>
@@ -319,8 +292,7 @@ const DashboardPage = () => {
                     <div>
                       <p className="text-sm font-semibold text-gray-800">{exp.description}</p>
                       <p className="text-xs text-gray-500">
-                        {/* Format waktu adaptif sesuai filter */}
-                        {formatWaktu(exp.timestamp, timeRange)}
+                        {formatWaktu(exp.timestamp, timeFilter)}
                       </p>
                     </div>
                     <div className="flex items-center gap-3">
@@ -340,10 +312,11 @@ const DashboardPage = () => {
         {/* Kolom Kanan: Riwayat Transaksi */}
         <div className="lg:col-span-2">
           <div className="bg-surface p-5 rounded-2xl shadow-sm border border-gray-100 h-full">
-            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-              Riwayat Transaksi —
-              <span className="text-base font-normal text-gray-500 capitalize">{timeRange}</span>
-            </h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-gray-500" /> Riwayat Transaksi <span className="text-base font-normal text-gray-500 capitalize">{timeFilter.type}</span>
+              </h3>
+            </div>
             
             {/* Ringkasan Metode Pembayaran */}
             {transactions && transactions.length > 0 && (
@@ -382,7 +355,7 @@ const DashboardPage = () => {
                       <tr key={trx.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                         {/* Waktu: format adaptif (jam saja vs tanggal+jam) */}
                         <td className="py-3 text-sm text-gray-600 whitespace-nowrap">
-                          {formatWaktu(trx.timestamp, timeRange)}
+                          {formatWaktu(trx.timestamp, timeFilter)}
                         </td>
                         <td className="py-3 text-sm text-gray-900 font-medium">
                           {trx.items ? trx.items.map(i => `${i.quantity}x ${i.nama}`).join(', ') : '-'}

@@ -132,3 +132,57 @@ export const generateIdTransaksi = () => {
   const acak = Math.floor(Math.random() * 99999).toString().padStart(5, '0')
   return `TRX-${tanggal}-${acak}`
 }
+
+// ── Utilitas Waktu & Timeline ───────────────────────────────────────────────
+
+export const TIME_RANGE_OPTIONS = ['Hari Ini', '7 Hari Terakhir', 'Bulan Ini', 'Semua Waktu', 'Pilih Tanggal...']
+
+export const getTimeRangeBounds = (filter) => {
+  const type = typeof filter === 'string' ? filter : filter?.type || 'Hari Ini'
+  const now = new Date()
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime()
+
+  if (type === 'Pilih Tanggal...' && typeof filter === 'object') {
+    if (filter.customStart && filter.customEnd) {
+      const startDate = new Date(filter.customStart)
+      startDate.setHours(0, 0, 0, 0)
+      const endDate = new Date(filter.customEnd)
+      endDate.setHours(23, 59, 59, 999)
+      return { start: startDate.getTime(), end: endDate.getTime(), useBetween: true }
+    }
+    // Jika belum diisi lengkap, tampilkan hasil kosong atau tahan
+    return { start: 0, end: 0, useBetween: true }
+  }
+
+  if (type === 'Hari Ini') {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime()
+    return { start, end, useBetween: true }
+  }
+
+  if (type === '7 Hari Terakhir') {
+    const past = new Date(now)
+    past.setDate(now.getDate() - 6)
+    const start = new Date(past.getFullYear(), past.getMonth(), past.getDate(), 0, 0, 0, 0).getTime()
+    return { start, end, useBetween: true }
+  }
+
+  if (type === 'Bulan Ini') {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).getTime()
+    return { start, end, useBetween: true }
+  }
+
+  return { start: 0, end: Infinity, useBetween: false }
+}
+
+export const formatWaktu = (timestamp, filter) => {
+  const type = typeof filter === 'string' ? filter : filter?.type || 'Hari Ini'
+  const date = new Date(timestamp)
+  const timeStr = date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+
+  if (type === 'Hari Ini') {
+    return timeStr
+  }
+
+  const dateStr = date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+  return `${dateStr}, ${timeStr}`
+}
