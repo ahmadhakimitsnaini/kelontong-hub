@@ -21,83 +21,36 @@ db.version(1).stores({
 
 // ── VERSI 2: Tambahan Tabel Modul Pembukuan ──────────────────────────────────
 db.version(2).stores({
-  /**
-   * Tabel: products (tidak berubah)
-   */
   products: '++id, kategori, expiry_date, stok, nama',
-
-  /**
-   * Tabel: transactions (tidak berubah)
-   */
   transactions: '++id, shift_id, timestamp, synced',
-
-  /**
-   * Tabel: shifts (tidak berubah)
-   */
   shifts: '++id, user_id, start_time, end_time, synced',
-
-  /**
-   * Tabel: expenses (tidak berubah)
-   */
   expenses: '++id, shift_id, timestamp, synced',
-
-  /**
-   * Tabel: journal_entries (BARU)
-   * Menyimpan semua entri jurnal Double-Entry Bookkeeping.
-   * Di-generate otomatis oleh sistem saat transaksi/pengeluaran terjadi.
-   *
-   * Kolom yang diindeks:
-   * - id           : Primary key (auto-increment)
-   * - timestamp    : Untuk sorting kronologis di Buku Besar
-   * - account_name : Nama akun (Kas, Penjualan, HPP, Beban Operasional, dll)
-   * - type         : 'DEBIT' atau 'CREDIT'
-   * - reference_id : ID referensi ke tabel asal (transaction.id / expense.id)
-   * - reference_type : 'TRANSACTION' | 'EXPENSE' | 'DEBT_PAYMENT' | 'MANUAL'
-   */
   journal_entries: '++id, timestamp, account_name, type, reference_id, reference_type',
-
-  /**
-   * Tabel: debts (BARU) — Hutang Supplier / Accounts Payable
-   *
-   * Kolom:
-   * - id            : Primary key
-   * - supplier_name : Nama supplier/agen
-   * - description   : Keterangan barang yang dihutang
-   * - amount        : Total tagihan awal
-   * - paid_amount   : Total yang sudah dibayar
-   * - due_date      : Tanggal jatuh tempo (timestamp)
-   * - status        : 'UNPAID' | 'PARTIAL' | 'PAID'
-   * - created_at    : Waktu pencatatan
-   */
   debts: '++id, supplier_name, due_date, status, created_at',
-
-  /**
-   * Tabel: receivables (BARU) — Kasbon Pelanggan / Accounts Receivable
-   *
-   * Kolom:
-   * - id             : Primary key
-   * - customer_name  : Nama pelanggan
-   * - customer_phone : No HP untuk kirim tagihan via WA (opsional)
-   * - amount         : Total hutang yang belum dibayar
-   * - credit_limit   : Batas maksimal kasbon (opsional)
-   * - last_updated   : Waktu terakhir ada aktivitas
-   * - status         : 'ACTIVE' | 'SETTLED'
-   */
   receivables: '++id, customer_name, status, last_updated',
-
-  /**
-   * Tabel: cash_reconciliation (BARU) — Rekonsiliasi / Tutup Kasir
-   *
-   * Kolom:
-   * - id               : Primary key
-   * - timestamp        : Waktu tutup kasir
-   * - shift_id         : Referensi ke sesi shift
-   * - system_balance   : Total kas menurut sistem (dari transaksi Tunai)
-   * - physical_balance : Uang fisik yang dihitung kasir
-   * - difference       : Selisih (physical - system); negatif = kurang
-   * - note             : Keterangan jika ada selisih
-   */
   cash_reconciliation: '++id, timestamp, shift_id',
 })
+
+// ── VERSI 3: Pemisahan Stok (Gudang & Etalase) ───────────────────────────────
+db.version(3).stores({
+  // Tabel produk diupdate index-nya.
+  // Kolom stok dihilangkan dari skema utama diganti dengan stok_gudang & stok_etalase
+  // Catatan: Dexie hanya mengindeks kolom pencarian. Kolom data bebas ditambahkan.
+  products: '++id, kategori, expiry_date, nama',
+  transactions: '++id, shift_id, timestamp, synced',
+  shifts: '++id, user_id, start_time, end_time, synced',
+  expenses: '++id, shift_id, timestamp, synced',
+  journal_entries: '++id, timestamp, account_name, type, reference_id, reference_type',
+  debts: '++id, supplier_name, due_date, status, created_at',
+  receivables: '++id, customer_name, status, last_updated',
+  cash_reconciliation: '++id, timestamp, shift_id',
+}).upgrade(tx => {
+  // Migrasi data: stok yang lama dialihkan ke stok_etalase, gudang diisi 0.
+  return tx.products.toCollection().modify(product => {
+    product.stok_etalase = product.stok !== undefined ? product.stok : 0;
+    product.stok_gudang = 0;
+    delete product.stok;
+  });
+});
 
 export default db
