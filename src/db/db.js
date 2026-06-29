@@ -53,4 +53,16 @@ db.version(3).stores({
   });
 });
 
+// ── HOOKS ────────────────────────────────────────────────────────────────────
+// Secara otomatis set synced = 0 setiap ada insert baru ke tabel yang butuh disinkronkan
+const syncableTables = ['transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation'];
+
+syncableTables.forEach(tableName => {
+  db[tableName].hook('creating', function (primKey, obj, transaction) {
+    if (typeof obj.synced === 'undefined') {
+      obj.synced = 0;
+    }
+  });
+});
+
 export default db
