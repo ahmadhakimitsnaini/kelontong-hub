@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import db from '../../db/db'
 import { formatRupiah, formatTanggal } from '../../lib/utils'
 import useNotificationStore from '../../store/useNotificationStore'
+import useAuthStore from '../../store/useAuthStore'
 
 const ShiftPage = () => {
   // ── 1. AMBIL STATUS SHIFT TERAKHIR DARI DATABASE ──────────────────────────
@@ -17,22 +18,24 @@ const ShiftPage = () => {
   const isShiftActive = activeShift && !activeShift.waktu_selesai
 
   // ── 2. STATE UNTUK BUKA SHIFT ──────────────────────────────────────────────
-  const [bukaShiftForm, setBukaShiftForm] = useState({ nama_kasir: '', saldo_awal: '' })
+  const [bukaShiftForm, setBukaShiftForm] = useState({ saldo_awal: '' })
+  const { user } = useAuthStore()
 
   const handleBukaShift = async (e) => {
     e.preventDefault()
-    if (!bukaShiftForm.nama_kasir || !bukaShiftForm.saldo_awal) return
+    if (!bukaShiftForm.saldo_awal) return
 
     try {
       await db.shifts.add({
-        nama_kasir: bukaShiftForm.nama_kasir,
+        user_id: user?.id,
+        nama_kasir: user?.full_name || 'Admin',
         saldo_awal: parseInt(bukaShiftForm.saldo_awal),
         waktu_mulai: new Date().getTime(),
         waktu_selesai: null,
         saldo_akhir: null,
         selisih: null
       })
-      setBukaShiftForm({ nama_kasir: '', saldo_awal: '' })
+      setBukaShiftForm({ saldo_awal: '' })
       useNotificationStore.getState().showAlert('Shift berhasil dibuka!', 'success')
     } catch (error) {
       useNotificationStore.getState().showAlert('Gagal membuka shift.', 'error')
@@ -121,11 +124,10 @@ const ShiftPage = () => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Nama Kasir / Staff</label>
               <input 
-                required type="text" 
-                value={bukaShiftForm.nama_kasir} 
-                onChange={(e) => setBukaShiftForm({...bukaShiftForm, nama_kasir: e.target.value})}
-                placeholder="Contoh: Budi"
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:bg-white transition-all" 
+                type="text" 
+                disabled
+                value={user?.full_name || 'Admin'} 
+                className="w-full px-4 py-3 bg-gray-100 text-gray-500 border border-gray-200 rounded-xl cursor-not-allowed font-medium" 
               />
             </div>
             <div>

@@ -11,18 +11,23 @@ import {
   BookOpen,
   CloudUpload,
   CloudOff,
-  Cloud
+  Cloud,
+  LogOut,
+  UserCircle2
 } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import db from "../../db/db";
 import { syncAllPendingData, getPendingSyncCount } from "../../lib/syncService";
 import GlobalNotification from "./GlobalNotification";
+import useAuthStore from "../../store/useAuthStore";
 
 const AppLayout = () => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const location = useLocation();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [pendingCount, setPendingCount] = useState(0);
+
+  const { isKasir, getFullName, getRole, logout } = useAuthStore();
 
   // Pantau status koneksi internet untuk fitur Offline Sync
   useEffect(() => {
@@ -84,14 +89,22 @@ const AppLayout = () => {
     hour: '2-digit', minute: '2-digit', second: '2-digit'
   });
 
-  // Menu Navigasi
-  const navItems = [
+  // Menu Navigasi Dasar
+  const baseNavItems = [
     { name: "Kasir", path: "/kasir", icon: ShoppingCart },
     { name: "Inventaris", path: "/inventaris", icon: Package },
     { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
     { name: "Shift", path: "/shift", icon: Clock },
     { name: "Pembukuan", path: "/pembukuan", icon: BookOpen },
   ];
+
+  // Filter Menu: Jika Kasir, hilangkan Dashboard dan Pembukuan
+  const navItems = baseNavItems.filter(item => {
+    if (isKasir() && (item.name === "Dashboard" || item.name === "Pembukuan")) {
+      return false;
+    }
+    return true;
+  });
 
   return (
     <div className="flex h-screen bg-background text-gray-800 font-sans overflow-hidden">
@@ -130,6 +143,26 @@ const AppLayout = () => {
             );
           })}
         </nav>
+
+        {/* Profil User & Logout (Sidebar Bottom) */}
+        <div className="p-4 border-t border-gray-100 flex items-center justify-between">
+          <div className="hidden lg:flex items-center gap-3 overflow-hidden">
+            <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+              <UserCircle2 className="w-5 h-5 text-gray-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-gray-800 truncate">{getFullName()}</p>
+              <p className="text-[10px] uppercase font-bold text-primary-600 tracking-wider">{getRole()}</p>
+            </div>
+          </div>
+          <button 
+            onClick={logout}
+            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 mx-auto lg:mx-0"
+            title="Keluar (Logout)"
+          >
+            <LogOut className="w-5 h-5" />
+          </button>
+        </div>
       </aside>
 
       {/* ── MAIN CONTENT AREA ──────────────────────────────────────────────── */}

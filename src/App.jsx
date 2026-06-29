@@ -23,11 +23,11 @@ function App() {
             {/* Bisa diakses Admin & Kasir */}
             <Route path="/kasir" element={<POSPage />} />
             <Route path="/shift" element={<ShiftPage />} />
+            <Route path="/inventaris" element={<InventoryPage />} />
             
             {/* Rute khusus Admin (akan dilindungi tambahan di dalam AppLayout nanti, tapi untuk perlindungan hard-route:) */}
             <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
               <Route path="/dashboard" element={<DashboardPage />} />
-              <Route path="/inventaris" element={<InventoryPage />} />
               <Route path="/pembukuan" element={<PembukuanPage />} />
             </Route>
           </Route>
