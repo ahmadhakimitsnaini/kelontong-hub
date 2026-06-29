@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import AppLayout from './components/layout/AppLayout'
+import ProtectedRoute from './components/layout/ProtectedRoute'
+import LoginPage from './pages/Auth/LoginPage'
 import POSPage from './pages/POS/POSPage'
 import DashboardPage from './pages/Dashboard/DashboardPage'
 import InventoryPage from './pages/Inventory/InventoryPage'
@@ -10,29 +12,29 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Layout Utama (App Shell) */}
-        <Route element={<AppLayout />}>
-          {/* Redirect root ke halaman Kasir (POS) sebagai halaman utama */}
-          <Route path="/" element={<Navigate to="/kasir" replace />} />
+        {/* Rute Publik */}
+        <Route path="/login" element={<LoginPage />} />
 
-          {/* Halaman Kasir (POS) — Halaman utama untuk Staff */}
-          <Route path="/kasir" element={<POSPage />} />
-
-          {/* Halaman Dashboard Laba/Rugi — Untuk Owner */}
-          <Route path="/dashboard" element={<DashboardPage />} />
-
-          {/* Halaman Inventaris & FIFO Pintar */}
-          <Route path="/inventaris" element={<InventoryPage />} />
-
-          {/* Halaman Manajemen Shift & Pengeluaran */}
-          <Route path="/shift" element={<ShiftPage />} />
-
-          {/* Halaman Pembukuan (Accounting) */}
-          <Route path="/pembukuan" element={<PembukuanPage />} />
+        {/* Rute yang dilindungi (Harus Login) */}
+        <Route element={<ProtectedRoute allowedRoles={['admin', 'kasir']} />}>
+          <Route element={<AppLayout />}>
+            <Route path="/" element={<Navigate to="/kasir" replace />} />
+            
+            {/* Bisa diakses Admin & Kasir */}
+            <Route path="/kasir" element={<POSPage />} />
+            <Route path="/shift" element={<ShiftPage />} />
+            
+            {/* Rute khusus Admin (akan dilindungi tambahan di dalam AppLayout nanti, tapi untuk perlindungan hard-route:) */}
+            <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/inventaris" element={<InventoryPage />} />
+              <Route path="/pembukuan" element={<PembukuanPage />} />
+            </Route>
+          </Route>
         </Route>
 
-        {/* Fallback: Redirect ke Kasir jika URL tidak dikenal */}
-        <Route path="*" element={<Navigate to="/kasir" replace />} />
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   )
