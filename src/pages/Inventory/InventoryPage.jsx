@@ -3,12 +3,14 @@ import { Plus, Search, Filter, AlertTriangle, Clock, Trash2, Edit, ArrowRightLef
 import { useLiveQuery } from 'dexie-react-hooks'
 import db from '../../db/db'
 import { formatRupiah, formatTanggal, getKadaluwarsaClass, hitungSisaHari } from '../../lib/utils'
+import useNotificationStore from '../../store/useNotificationStore'
 
 const InventoryPage = () => {
   // ── STATE MANAJEMEN ───────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('')
   const [filterMode, setFilterMode] = useState('Semua') // 'Semua' | 'Kritis' | 'EtalaseMenipis' | 'GudangMenipis'
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingId, setEditingId] = useState(null)
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
   const [transferData, setTransferData] = useState({ productId: null, amount: '', fromLocation: 'gudang' })
   
@@ -50,8 +52,7 @@ const InventoryPage = () => {
   const handleSimpanBarang = async (e) => {
     e.preventDefault()
     try {
-      // Memasukkan data ke IndexedDB
-      await db.products.add({
+      const payload = {
         nama: formData.nama,
         kategori: formData.kategori,
         harga_beli: parseInt(formData.harga_beli),
@@ -59,21 +60,52 @@ const InventoryPage = () => {
         stok_gudang: parseInt(formData.stok_gudang) || 0,
         stok_etalase: parseInt(formData.stok_etalase) || 0,
         expiry_date: formData.expiry_date || null
-      })
+      }
+
+      if (editingId) {
+        // Mode Edit: Update data yang ada
+        await db.products.update(editingId, payload)
+      } else {
+        // Mode Tambah: Insert data baru
+        await db.products.add(payload)
+      }
       
       // Reset form & tutup modal
       setFormData({ nama: '', kategori: '', harga_beli: '', harga_jual: '', stok_gudang: '', stok_etalase: '', expiry_date: '' })
+      setEditingId(null)
       setIsModalOpen(false)
+      useNotificationStore.getState().showAlert(editingId ? "Barang berhasil diperbarui!" : "Barang berhasil ditambahkan!", "success")
     } catch (error) {
       console.error("Gagal menyimpan barang:", error)
-      alert("Terjadi kesalahan saat menyimpan barang.")
+      useNotificationStore.getState().showAlert("Terjadi kesalahan saat menyimpan barang.", "error")
     }
   }
 
+  const handleEditClick = (product) => {
+    setFormData({
+      nama: product.nama,
+      kategori: product.kategori || '',
+      harga_beli: product.harga_beli || '',
+      harga_jual: product.harga_jual || '',
+      stok_gudang: product.stok_gudang || 0,
+      stok_etalase: product.stok_etalase || 0,
+      expiry_date: product.expiry_date || ''
+    })
+    setEditingId(product.id)
+    setIsModalOpen(true)
+  }
+
+  const handleTutupModal = () => {
+    setIsModalOpen(false)
+    setEditingId(null)
+    setFormData({ nama: '', kategori: '', harga_beli: '', harga_jual: '', stok_gudang: '', stok_etalase: '', expiry_date: '' })
+  }
+
   const handleHapusBarang = async (id) => {
-    if (window.confirm("Yakin ingin menghapus barang ini dari sistem?")) {
+    useNotificationStore.getState().showConfirm("Yakin ingin menghapus barang ini dari sistem?", async () => {
       await db.products.delete(id)
-    }
+      useNotificationStore.getState().showAlert("Barang berhasil dihapus.", "success")
+    })
   }
 
   const handleTransferStock = async (e) => {
@@ -84,14 +116,14 @@ const InventoryPage = () => {
       
       if (transferData.fromLocation === 'gudang') {
         if (product.stok_gudang < amount) {
-          alert('Stok gudang tidak mencukupi!')
+          useNotificationStore.getState().showAlert('Stok gudang tidak mencukupi!', 'error')
           return
         }
         product.stok_gudang -= amount
         product.stok_etalase += amount
       } else {
         if (product.stok_etalase < amount) {
-          alert('Stok etalase tidak mencukupi!')
+          useNotificationStore.getState().showAlert('Stok etalase tidak mencukupi!', 'error')
           return
         }
         product.stok_etalase -= amount
@@ -101,9 +133,10 @@ const InventoryPage = () => {
       await db.products.put(product)
       setIsTransferModalOpen(false)
       setTransferData({ productId: null, amount: '', fromLocation: 'gudang' })
+      useNotificationStore.getState().showAlert("Stok berhasil dipindahkan!", "success")
     } catch (err) {
       console.error(err)
-      alert("Gagal memindahkan stok")
+      useNotificationStore.getState().showAlert("Gagal memindahkan stok", "error")
     }
   }
 
@@ -118,7 +151,11 @@ const InventoryPage = () => {
           <p className="text-gray-500 text-sm mt-1">Total {products?.length || 0} jenis barang terdaftar di warung.</p>
         </div>
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => {
+            setEditingId(null)
+            setFormData({ nama: '', kategori: '', harga_beli: '', harga_jual: '', stok_gudang: '', stok_etalase: '', expiry_date: '' })
+            setIsModalOpen(true)
+          }}
           className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-500/40 border-2 border-green-400/50 hover:-translate-y-1 active:translate-y-0 active:scale-95"
         >
           <Plus className="w-5 h-5" />
@@ -171,14 +208,14 @@ const InventoryPage = () => {
 
       {/* ── TABEL/LIST BARANG ────────────────────────────────────────────── */}
       <div className="flex-1 overflow-auto bg-surface rounded-2xl shadow-sm border border-gray-100">
-        <div className="min-w-[800px]">
+        <div className="min-w-[1000px]">
           {/* Table Header */}
           <div className="grid grid-cols-12 gap-4 p-4 border-b border-gray-100 bg-gray-50/80 font-semibold text-gray-600 text-sm">
             <div className="col-span-3">Info Barang</div>
             <div className="col-span-2">Harga Beli/Jual</div>
             <div className="col-span-2 text-center">Sisa Stok</div>
-            <div className="col-span-3">Status Kadaluwarsa (FIFO)</div>
-            <div className="col-span-2 text-right">Aksi</div>
+            <div className="col-span-3 text-center">Status Kadaluwarsa (FIFO)</div>
+            <div className="col-span-2 text-center">Aksi</div>
           </div>
 
           {/* Table Body */}
@@ -210,21 +247,21 @@ const InventoryPage = () => {
                         <div className="font-bold text-gray-800 text-base">
                           Total: {(product.stok_gudang || 0) + (product.stok_etalase || 0)}
                         </div>
-                        <div className="flex gap-2 mt-1 text-[10px] font-medium">
-                          <span className={`px-2 py-0.5 border rounded-md ${product.stok_gudang <= 5 ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
-                            📦 Gud: {product.stok_gudang || 0}
+                        <div className="flex flex-nowrap justify-center gap-2 mt-2 text-xs font-bold whitespace-nowrap">
+                          <span className={`px-3 py-1.5 border-2 rounded-lg shadow-sm ${product.stok_gudang <= 5 ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-blue-50 text-blue-600 border-blue-200'}`}>
+                            📦 Gudang: {product.stok_gudang || 0}
                           </span>
-                          <span className={`px-2 py-0.5 border rounded-md ${product.stok_etalase <= 5 ? 'bg-orange-50 text-orange-600 border-orange-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
-                            🏪 Eta: {product.stok_etalase || 0}
+                          <span className={`px-3 py-1.5 border-2 rounded-lg shadow-sm ${product.stok_etalase <= 5 ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
+                            🏪 Etalase: {product.stok_etalase || 0}
                           </span>
                         </div>
                       </div>
                     </div>
 
                     {/* Kolom 4: FIFO & Kadaluwarsa */}
-                    <div className="col-span-3 flex flex-col items-start justify-center">
-                      <div className={`text-xs font-semibold px-2.5 py-1 rounded-full border flex items-center gap-1.5 mb-1 ${kadaluwarsa.badge}`}>
-                        <div className={`w-1.5 h-1.5 rounded-full ${kadaluwarsa.dot}`}></div>
+                    <div className="col-span-3 flex flex-col items-center justify-center text-center">
+                      <div className={`text-xs font-semibold px-2.5 py-1 rounded-full border flex items-center justify-center gap-1.5 mb-1 ${kadaluwarsa.badge}`}>
+                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${kadaluwarsa.dot}`}></div>
                         {kadaluwarsa.label}
                       </div>
                       <span className="text-[11px] text-gray-500 font-medium">
@@ -233,7 +270,7 @@ const InventoryPage = () => {
                     </div>
 
                     {/* Kolom 5: Aksi */}
-                    <div className="col-span-2 flex justify-end gap-2">
+                    <div className="col-span-2 flex justify-center items-center gap-2">
                       <button 
                         onClick={() => { setTransferData({ ...transferData, productId: product.id }); setIsTransferModalOpen(true); }}
                         className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -241,7 +278,11 @@ const InventoryPage = () => {
                       >
                         <ArrowRightLeft className="w-4 h-4" />
                       </button>
-                      <button className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors">
+                      <button 
+                        onClick={() => handleEditClick(product)}
+                        className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                        title="Edit Barang"
+                      >
                         <Edit className="w-4 h-4" />
                       </button>
                       <button 
@@ -264,7 +305,9 @@ const InventoryPage = () => {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-              <h2 className="text-xl font-bold text-gray-900">Tambah Barang Baru</h2>
+              <h2 className="text-xl font-bold text-gray-900">
+                {editingId ? "Edit Barang" : "Tambah Barang Baru"}
+              </h2>
             </div>
             
             <form onSubmit={handleSimpanBarang} className="p-6">
@@ -319,8 +362,10 @@ const InventoryPage = () => {
               </div>
 
               <div className="mt-8 flex justify-end gap-3">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 rounded-xl text-gray-600 font-bold hover:bg-gray-100 transition-colors">Batal</button>
-                <button type="submit" className="px-6 py-2.5 rounded-xl bg-green-500 text-white font-bold hover:bg-green-600 shadow-lg shadow-green-500/40 transition-all active:scale-95">Simpan Barang</button>
+                <button type="button" onClick={handleTutupModal} className="px-5 py-2.5 rounded-xl text-gray-600 font-bold hover:bg-gray-100 transition-colors">Batal</button>
+                <button type="submit" className="px-6 py-2.5 rounded-xl bg-green-500 text-white font-bold hover:bg-green-600 shadow-lg shadow-green-500/40 transition-all active:scale-95">
+                  {editingId ? "Simpan Perubahan" : "Simpan Barang"}
+                </button>
               </div>
             </form>
           </div>

@@ -3,6 +3,7 @@ import { Search, Plus, Minus, Trash2, ShoppingBag, X, CheckCircle, CreditCard, B
 import useCartStore from '../../store/useCartStore'
 import { formatRupiah } from '../../lib/utils'
 import db from '../../db/db'
+import useNotificationStore from '../../store/useNotificationStore'
 
 import { useLiveQuery } from 'dexie-react-hooks'
 
@@ -59,7 +60,7 @@ const POSPage = () => {
 
     const paid = Number(amountPaid) || 0;
     if (paymentMethod === 'Tunai' && paid < totalHarga) {
-      alert("Jumlah uang tunai kurang dari total tagihan!");
+      useNotificationStore.getState().showAlert("Jumlah uang tunai kurang dari total tagihan!", "error");
       return;
     }
 
@@ -89,7 +90,7 @@ const POSPage = () => {
       }
 
       const msgKembalian = paymentMethod === 'Tunai' && kembalian > 0 ? `\nKembalian: ${formatRupiah(kembalian)}` : '';
-      alert(`Pembayaran berhasil! Total: ${formatRupiah(totalHarga)}${msgKembalian}`)
+      useNotificationStore.getState().showAlert(`Pembayaran berhasil! Total: ${formatRupiah(totalHarga)}${msgKembalian}`, "success")
       
       clearCart()
       setIsMobileCartOpen(false)
@@ -98,7 +99,7 @@ const POSPage = () => {
       setPaymentMethod('Tunai')
     } catch (error) {
       console.error("Gagal melakukan transaksi:", error)
-      alert("Terjadi kesalahan saat memproses pembayaran.")
+      useNotificationStore.getState().showAlert("Terjadi kesalahan saat memproses pembayaran.", "error")
     }
   }
 

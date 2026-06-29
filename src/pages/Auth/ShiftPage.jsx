@@ -3,6 +3,7 @@ import { Clock, Play, Square, CheckCircle2, AlertCircle, XCircle } from 'lucide-
 import { useLiveQuery } from 'dexie-react-hooks'
 import db from '../../db/db'
 import { formatRupiah, formatTanggal } from '../../lib/utils'
+import useNotificationStore from '../../store/useNotificationStore'
 
 const ShiftPage = () => {
   // ── 1. AMBIL STATUS SHIFT TERAKHIR DARI DATABASE ──────────────────────────
@@ -32,8 +33,9 @@ const ShiftPage = () => {
         selisih: null
       })
       setBukaShiftForm({ nama_kasir: '', saldo_awal: '' })
+      useNotificationStore.getState().showAlert('Shift berhasil dibuka!', 'success')
     } catch (error) {
-      alert('Gagal membuka shift.')
+      useNotificationStore.getState().showAlert('Gagal membuka shift.', 'error')
       console.error(error)
     }
   }
@@ -71,7 +73,7 @@ const ShiftPage = () => {
     e.preventDefault()
     if (saldoAkhirFisik === '') return
 
-    if (window.confirm("Apakah uang di laci sudah dihitung dengan benar? Shift akan dikunci.")) {
+    useNotificationStore.getState().showConfirm("Apakah uang di laci sudah dihitung dengan benar? Shift akan dikunci.", async () => {
       try {
         await db.shifts.update(activeShift.id, {
           waktu_selesai: new Date().getTime(),
@@ -79,11 +81,12 @@ const ShiftPage = () => {
           selisih: selisih
         })
         setSaldoAkhirFisik('')
+        useNotificationStore.getState().showAlert('Shift berhasil ditutup!', 'success')
       } catch (error) {
-        alert('Gagal menutup shift.')
+        useNotificationStore.getState().showAlert('Gagal menutup shift.', 'error')
         console.error(error)
       }
-    }
+    })
   }
 
   // ── 4. RIWAYAT SHIFT SEBELUMNYA ────────────────────────────────────────────

@@ -12,6 +12,7 @@ import {
 import { useLiveQuery } from 'dexie-react-hooks'
 import db from '../../db/db'
 import { formatRupiah, formatTanggal, formatTanggalSingkat, TIME_RANGE_OPTIONS, getTimeRangeBounds } from '../../lib/utils'
+import useNotificationStore from '../../store/useNotificationStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -567,15 +568,24 @@ const TabHutang = ({ debts, refetch }) => {
   }
 
   const handlePay = async (debt) => {
-    const cicilan = prompt(`Masukkan jumlah pembayaran untuk "${debt.supplier_name}" (sisa: ${formatRupiah(debt.amount - (debt.paid_amount || 0))}):`)
-    if (!cicilan || isNaN(cicilan)) return
-    const newPaid = (debt.paid_amount || 0) + parseInt(cicilan)
-    const newStatus = newPaid >= debt.amount ? 'PAID' : 'PARTIAL'
-    await db.debts.update(debt.id, { paid_amount: newPaid, status: newStatus })
+    useNotificationStore.getState().showPrompt(
+      `Masukkan jumlah pembayaran untuk "${debt.supplier_name}" (sisa: ${formatRupiah(debt.amount - (debt.paid_amount || 0))}):`,
+      '',
+      async (cicilan) => {
+        if (!cicilan || isNaN(cicilan)) return
+        const newPaid = (debt.paid_amount || 0) + parseInt(cicilan)
+        const newStatus = newPaid >= debt.amount ? 'PAID' : 'PARTIAL'
+        await db.debts.update(debt.id, { paid_amount: newPaid, status: newStatus })
+        useNotificationStore.getState().showAlert('Pembayaran berhasil dicatat', 'success')
+      }
+    )
   }
 
   const handleDelete = async (id) => {
-    if (window.confirm('Yakin ingin menghapus tagihan ini?')) await db.debts.delete(id)
+    useNotificationStore.getState().showConfirm('Yakin ingin menghapus tagihan ini?', async () => {
+      await db.debts.delete(id)
+      useNotificationStore.getState().showAlert('Tagihan berhasil dihapus', 'success')
+    })
   }
 
   const unpaid = (debts || []).filter(d => d.status !== 'PAID')
@@ -760,16 +770,21 @@ const TabPiutang = ({ receivables }) => {
   }
 
   const handleSettle = async (r) => {
-    const lunas = window.confirm(`Tandai kasbon "${r.customer_name}" sebesar ${formatRupiah(r.amount)} sebagai LUNAS?`)
-    if (lunas) await db.receivables.update(r.id, { status: 'SETTLED', last_updated: Date.now() })
+    useNotificationStore.getState().showConfirm(`Tandai kasbon "${r.customer_name}" sebesar ${formatRupiah(r.amount)} sebagai LUNAS?`, async () => {
+      await db.receivables.update(r.id, { status: 'SETTLED', last_updated: Date.now() })
+      useNotificationStore.getState().showAlert('Kasbon berhasil dilunasi', 'success')
+    })
   }
 
   const handleDelete = async (id) => {
-    if (window.confirm('Yakin ingin menghapus data kasbon ini?')) await db.receivables.delete(id)
+    useNotificationStore.getState().showConfirm('Yakin ingin menghapus data kasbon ini?', async () => {
+      await db.receivables.delete(id)
+      useNotificationStore.getState().showAlert('Kasbon berhasil dihapus', 'success')
+    })
   }
 
   const handleWA = (r) => {
-    if (!r.customer_phone) { alert('Nomor HP pelanggan belum diisi.'); return }
+    if (!r.customer_phone) { useNotificationStore.getState().showAlert('Nomor HP pelanggan belum diisi.', 'error'); return }
     const msg = encodeURIComponent(`Halo ${r.customer_name}, saldo kasbon Anda di Toko Podjok saat ini sebesar ${formatRupiah(r.amount)}. Mohon segera dilunasi. Terima kasih.`)
     window.open(`https://wa.me/62${r.customer_phone.replace(/^0/, '')}?text=${msg}`, '_blank')
   }
@@ -932,7 +947,7 @@ const TabRekonsiliasi = ({ transactions, reconciliations }) => {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!physicalCash) return
-    if (selisih !== 0 && !note.trim()) { alert('Harap isi keterangan jika ada selisih.'); return }
+    if (selisih !== 0 && !note.trim()) { useNotificationStore.getState().showAlert('Harap isi keterangan jika ada selisih.', 'error'); return }
     setIsSubmitting(true)
     try {
       await db.cash_reconciliation.add({
@@ -945,9 +960,9 @@ const TabRekonsiliasi = ({ transactions, reconciliations }) => {
       })
       setPhysicalCash('')
       setNote('')
-      alert('Rekonsiliasi berhasil dicatat!')
+      useNotificationStore.getState().showAlert('Rekonsiliasi berhasil dicatat!', 'success')
     } catch (err) {
-      alert('Gagal menyimpan rekonsiliasi.')
+      useNotificationStore.getState().showAlert('Gagal menyimpan rekonsiliasi.', 'error')
     } finally {
       setIsSubmitting(false)
     }
