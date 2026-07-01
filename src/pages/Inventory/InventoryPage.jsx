@@ -1,6 +1,7 @@
-import React, { useState } from 'react'
-import { Plus, Search, Filter, AlertTriangle, Clock, Trash2, Edit, ArrowRightLeft } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Plus, Search, Filter, AlertTriangle, Clock, Trash2, Edit, ArrowRightLeft, ScanLine } from 'lucide-react'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { useSearchParams } from 'react-router-dom'
 import db from '../../db/db'
 import { formatRupiah, formatTanggal, getKadaluwarsaClass, hitungSisaHari } from '../../lib/utils'
 import useNotificationStore from '../../store/useNotificationStore'
@@ -13,8 +14,9 @@ const InventoryPage = () => {
   const [editingId, setEditingId] = useState(null)
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
   const [transferData, setTransferData] = useState({ productId: null, amount: '', fromLocation: 'gudang' })
+  const [searchParams, setSearchParams] = useSearchParams()
   
-  // State Form Tambah Barang
+  // State Form Tambah Barang (+ field barcode untuk Smart Scanner)
   const [formData, setFormData] = useState({
     nama: '',
     kategori: '',
@@ -22,8 +24,33 @@ const InventoryPage = () => {
     harga_jual: '',
     stok_gudang: '',
     stok_etalase: '',
-    expiry_date: ''
+    expiry_date: '',
+    barcode: ''
   })
+
+  // ── AUTO-OPEN MODAL dari Smart Scanner (query param ?barcode=XXXX) ─────────
+  // Saat Scanner Produk Baru redirect ke /inventaris?barcode=1234567890,
+  // sistem otomatis membuka modal tambah barang dengan field barcode sudah terisi.
+  useEffect(() => {
+    const barcodeFromScanner = searchParams.get('barcode')
+    if (barcodeFromScanner) {
+      // Buka modal dalam state "tambah baru"
+      setEditingId(null)
+      setFormData({
+        nama: '',
+        kategori: '',
+        harga_beli: '',
+        harga_jual: '',
+        stok_gudang: '',
+        stok_etalase: '',
+        expiry_date: '',
+        barcode: barcodeFromScanner,
+      })
+      setIsModalOpen(true)
+      // Bersihkan query param dari URL agar tidak re-trigger saat refresh
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   // ── MENGAMBIL DATA DARI DEXIE SECARA REAL-TIME ────────────────────────────
   // useLiveQuery memastikan jika ada perubahan di db.products, tampilan langsung update
@@ -59,7 +86,8 @@ const InventoryPage = () => {
         harga_jual: parseInt(formData.harga_jual),
         stok_gudang: parseInt(formData.stok_gudang) || 0,
         stok_etalase: parseInt(formData.stok_etalase) || 0,
-        expiry_date: formData.expiry_date || null
+        expiry_date: formData.expiry_date || null,
+        barcode: formData.barcode?.trim() || null,
       }
 
       if (editingId) {
@@ -89,7 +117,8 @@ const InventoryPage = () => {
       harga_jual: product.harga_jual || '',
       stok_gudang: product.stok_gudang || 0,
       stok_etalase: product.stok_etalase || 0,
-      expiry_date: product.expiry_date || ''
+      expiry_date: product.expiry_date || '',
+      barcode: product.barcode || '',
     })
     setEditingId(product.id)
     setIsModalOpen(true)
@@ -98,7 +127,7 @@ const InventoryPage = () => {
   const handleTutupModal = () => {
     setIsModalOpen(false)
     setEditingId(null)
-    setFormData({ nama: '', kategori: '', harga_beli: '', harga_jual: '', stok_gudang: '', stok_etalase: '', expiry_date: '' })
+    setFormData({ nama: '', kategori: '', harga_beli: '', harga_jual: '', stok_gudang: '', stok_etalase: '', expiry_date: '', barcode: '' })
   }
 
   const handleHapusBarang = async (id) => {
@@ -359,7 +388,40 @@ const InventoryPage = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Tgl Kadaluwarsa (Opsi)</label>
                   <input type="date" value={formData.expiry_date} onChange={(e) => setFormData({...formData, expiry_date: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none text-gray-700" />
                 </div>
+
+                {/* Field Barcode — Otomatis terisi dari Smart Scanner */}
+                <div className="mt-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Barcode Number (Opsi)
+                    </label>
+                    {formData.barcode && (
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                        <ScanLine className="w-3 h-3" />
+                        Terisi Scanner
+                      </span>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <ScanLine className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Scan barcode atau ketik manual..."
+                      value={formData.barcode}
+                      onChange={(e) => setFormData({...formData, barcode: e.target.value})}
+                      className={`w-full pl-9 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none transition-all ${
+                        formData.barcode
+                          ? 'border-emerald-300 bg-emerald-50 text-emerald-800 font-mono font-semibold'
+                          : 'border-gray-200 text-gray-700'
+                      }`}
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    Diisi otomatis jika produk diarahkan dari fitur Scan Produk Baru.
+                  </p>
+                </div>
               </div>
+
 
               <div className="mt-8 flex justify-end gap-3">
                 <button type="button" onClick={handleTutupModal} className="px-5 py-2.5 rounded-xl text-gray-600 font-bold hover:bg-gray-100 transition-colors">Batal</button>
