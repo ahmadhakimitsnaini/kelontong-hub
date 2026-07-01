@@ -55,8 +55,8 @@ FORMAT RESPON JSON YANG DIHARAPKAN:
 ]
 `
 
-    // 4. Panggil Gemini 1.5 Flash Vision API via REST
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`
+    // 4. Panggil Gemini Flash API via REST
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${GEMINI_API_KEY}`
     
     const geminiBody = {
       contents: [
@@ -89,7 +89,7 @@ FORMAT RESPON JSON YANG DIHARAPKAN:
     if (!geminiResponse.ok) {
       const errText = await geminiResponse.text()
       console.error("Gemini API Error:", errText)
-      throw new Error('Gagal memanggil Gemini API.')
+      throw new Error(`Gagal memanggil Gemini API: ${errText}`)
     }
 
     const geminiData = await geminiResponse.json()
@@ -116,11 +116,12 @@ FORMAT RESPON JSON YANG DIHARAPKAN:
 
   } catch (error) {
     console.error('[analyze-product-image] Error:', error.message)
+    // RETURN 200 AGAR FRONTEND BISA MEMBACA ISI ERROR JSON (TIDAK DITUTUPI OLEH SUPABASE)
     return new Response(
       JSON.stringify({ error: error.message }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500 
+        status: 200 
       }
     )
   }
