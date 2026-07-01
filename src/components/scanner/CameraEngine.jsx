@@ -288,20 +288,32 @@ const CameraEngine = () => {
     }
   }
 
-  // ── Callback: User konfirmasi produk dari Magic Scan ────────────────────────
+  // ── Callback: Konfirmasi Magic Scan (AI) ───────────────────────────────────
   const handleMagicScanConfirm = (product) => {
     setMagicResults(null)
-    setIsPaused(false)
-
-    if (activeMode === 'PENJUALAN') {
-      addItem(product)
-      showAlert(`✓ ${product.nama} ditambahkan ke keranjang`, 'success')
+    if (activeMode === 'KASIR') {
+      addItem({ ...product, qty: 1 })
+      showAlert(`✓ ${product.nama} ditambahkan dari Magic Scan`, 'success')
+      setLastScannedName(product.nama)
+      setTimeout(() => setLastScannedName(''), 2000)
+      setIsPaused(false)
     } else if (activeMode === 'KULAKAN') {
+      if (product.id === 'NEW') {
+        showAlert('Barang belum ada di database. Silakan tambah di Produk Baru terlebih dahulu.', 'error')
+        setIsPaused(false)
+        return
+      }
       setKulakanProduct(product)
       setIsPaused(true)
     } else if (activeMode === 'PRODUK_BARU') {
       closeScanner()
-      navigate(`/inventaris?barcode=magic_scan_${product.id}`)
+      if (product.id === 'NEW') {
+        // Jika AI menebak barang baru, kirim tebakannya ke form
+        navigate(`/inventaris?magic_name=${encodeURIComponent(product.nama)}&magic_category=${encodeURIComponent(product.kategori)}`)
+      } else {
+        // Jika AI ternyata menemukan barang tersebut di katalog
+        navigate(`/inventaris?barcode=magic_scan_${product.id}`)
+      }
     }
   }
 

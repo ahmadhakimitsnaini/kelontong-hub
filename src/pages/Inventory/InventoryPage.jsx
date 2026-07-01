@@ -28,23 +28,26 @@ const InventoryPage = () => {
     barcode: ''
   })
 
-  // ── AUTO-OPEN MODAL dari Smart Scanner (query param ?barcode=XXXX) ─────────
-  // Saat Scanner Produk Baru redirect ke /inventaris?barcode=1234567890,
-  // sistem otomatis membuka modal tambah barang dengan field barcode sudah terisi.
+  // ── AUTO-OPEN MODAL dari Smart Scanner (query param) ─────────
+  // Saat Scanner Produk Baru redirect ke /inventaris?barcode=... atau ?magic_name=...
+  // sistem otomatis membuka modal tambah barang dengan field terisi.
   useEffect(() => {
     const barcodeFromScanner = searchParams.get('barcode')
-    if (barcodeFromScanner) {
+    const magicName = searchParams.get('magic_name')
+    const magicCategory = searchParams.get('magic_category')
+
+    if (barcodeFromScanner || magicName) {
       // Buka modal dalam state "tambah baru"
       setEditingId(null)
       setFormData({
-        nama: '',
-        kategori: '',
+        nama: magicName || '',
+        kategori: magicCategory || '',
         harga_beli: '',
         harga_jual: '',
         stok_gudang: '',
         stok_etalase: '',
         expiry_date: '',
-        barcode: barcodeFromScanner,
+        barcode: barcodeFromScanner || '',
       })
       setIsModalOpen(true)
       // Bersihkan query param dari URL agar tidak re-trigger saat refresh

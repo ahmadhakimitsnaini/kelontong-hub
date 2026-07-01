@@ -37,21 +37,30 @@ Deno.serve(async (req) => {
 
     // 3. Susun Prompt Hibrida (Context-Aware)
     const prompt = `
-Anda adalah AI Kasir Pintar. Tugas Anda adalah mengidentifikasi produk fisik dari foto yang diberikan, lalu MENCARI produk yang paling cocok dari KATALOG TOKO berikut.
+Anda adalah AI Kasir Pintar. Tugas Anda adalah mengidentifikasi produk fisik dari foto yang diberikan.
 
 KATALOG TOKO (JSON Array):
 ${JSON.stringify(catalog)}
 
 INSTRUKSI:
 1. Analisa gambar produk dengan teliti (merek, varian, ukuran, warna).
-2. Cari maksimal 3 produk dari KATALOG TOKO yang paling cocok dengan gambar.
-3. WAJIB mengembalikan respon HANYA dalam format JSON array yang berisi objek produk persis seperti di katalog (id, nama, kategori, harga_jual).
-4. Jika tidak ada yang cocok sama sekali dari katalog, kembalikan array kosong [].
+2. PERTAMA, cari produk yang cocok di KATALOG TOKO. Jika ada yang cocok, kembalikan objek produk tersebut (id, nama, kategori, harga_jual).
+3. JIKA TIDAK ADA YANG COCOK DI KATALOG, maka TEBAKLAH nama produk tersebut berdasarkan gambar.
+   - Berikan nilai "id" dengan teks "NEW".
+   - Berikan "nama" dengan tebakan Anda (contoh: "Teh Pucuk Harum 350ml").
+   - Berikan "kategori" dengan tebakan Anda (contoh: "Minuman").
+   - Berikan "harga_jual" dengan nilai 0.
+4. WAJIB mengembalikan respon HANYA dalam format JSON array yang berisi maksimal 3 objek produk.
 5. Urutkan dari yang paling akurat (confidence tertinggi).
 
-FORMAT RESPON JSON YANG DIHARAPKAN:
+FORMAT RESPON JSON YANG DIHARAPKAN JIKA ADA DI KATALOG:
 [
   { "id": "1", "nama": "Indomie Goreng", "kategori": "Makanan", "harga_jual": 3000 }
+]
+
+FORMAT RESPON JSON JIKA BARANG BARU (TIDAK ADA DI KATALOG):
+[
+  { "id": "NEW", "nama": "Teh Pucuk Harum 350ml", "kategori": "Minuman", "harga_jual": 0 }
 ]
 `
 
