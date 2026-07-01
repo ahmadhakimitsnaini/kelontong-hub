@@ -53,6 +53,20 @@ db.version(3).stores({
   });
 });
 
+// ── VERSI 4: Tambah Index Barcode pada Products ───────────────────────────────
+// Field 'barcode' diindeks agar pencarian via scanner (WHERE barcode = X) sangat cepat.
+// Kolom barcode bersifat opsional (bisa null untuk produk lama tanpa barcode).
+db.version(4).stores({
+  products: '++id, kategori, expiry_date, nama, barcode',
+  transactions: '++id, shift_id, timestamp, synced',
+  shifts: '++id, user_id, start_time, end_time, synced',
+  expenses: '++id, shift_id, timestamp, synced',
+  journal_entries: '++id, timestamp, account_name, type, reference_id, reference_type',
+  debts: '++id, supplier_name, due_date, status, created_at',
+  receivables: '++id, customer_name, status, last_updated',
+  cash_reconciliation: '++id, timestamp, shift_id',
+});
+
 // ── HOOKS ────────────────────────────────────────────────────────────────────
 // Secara otomatis set synced = 0 setiap ada insert baru ke tabel yang butuh disinkronkan
 const syncableTables = ['transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation'];
