@@ -94,6 +94,12 @@ const AppLayout = () => {
     return latest && !latest.waktu_selesai ? latest : null;
   });
 
+  // Hitung jumlah pengajuan Inbound yang PENDING (untuk badge notifikasi Admin)
+  const pendingInboundCount = useLiveQuery(
+    () => db.inbound_logs.where('status').equals('PENDING').count(),
+    []
+  ) || 0;
+
   const formattedDate = currentTime.toLocaleDateString("id-ID", {
     weekday: "long",
     year: "numeric",
@@ -113,9 +119,11 @@ const AppLayout = () => {
       name: "Inventory",
       path: "/inventory",
       icon: Boxes,
+      badge: pendingInboundCount > 0 && !isKasir() ? pendingInboundCount : null,
       children: [
         { name: "Master Barang", path: "/inventory/master" },
         { name: "Inbound", path: "/inventory/inbound" },
+        { name: "Persetujuan Inbound", path: "/inventory/approval", adminOnly: true, badge: pendingInboundCount > 0 ? pendingInboundCount : null },
       ],
     },
     { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
@@ -123,8 +131,16 @@ const AppLayout = () => {
     { name: "Pembukuan", path: "/pembukuan", icon: BookOpen },
   ];
 
-  // Filter Menu: Jika Kasir, hilangkan Dashboard dan Pembukuan
-  const navItems = baseNavItems.filter((item) => {
+  // Filter Menu: Jika Kasir, hilangkan menu dan sub-menu khusus Admin
+  const navItems = baseNavItems.map(item => {
+    if (item.children) {
+      return {
+        ...item,
+        children: item.children.filter(child => !(isKasir() && child.adminOnly))
+      };
+    }
+    return item;
+  }).filter((item) => {
     if (isKasir() && (item.name === "Dashboard" || item.name === "Pembukuan")) {
       return false;
     }
@@ -170,14 +186,17 @@ const AppLayout = () => {
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <Icon
-                        className={`w-6 h-6 transition-transform ${isActive ? "scale-110" : "group-hover:scale-110"}`}
-                      />
+                      <div className="relative">
+                        <Icon className={`w-6 h-6 transition-transform ${isActive ? "scale-110" : "group-hover:scale-110"}`} />
+                        {item.badge && (
+                          <span className="absolute -top-1 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white border-2 border-surface animate-bounce">
+                            {item.badge}
+                          </span>
+                        )}
+                      </div>
                       <span className="hidden lg:block">{item.name}</span>
                     </div>
-                    <ChevronDown
-                      className={`hidden lg:block w-4 h-4 transition-transform ${isOpen ? "rotate-180" : ""}`}
-                    />
+                    <ChevronDown className={`hidden lg:block w-4 h-4 transition-transform ${isOpen ? "rotate-180" : ""}`} />
                   </div>
                 ) : (
                   <NavLink
@@ -203,7 +222,7 @@ const AppLayout = () => {
                         key={child.path}
                         to={child.path}
                         className={({ isActive: isChildActive }) =>
-                          `px-3 py-2 rounded-lg text-sm transition-colors ${
+                          `px-3 py-2 rounded-lg text-sm transition-colors flex items-center justify-between ${
                             isChildActive
                               ? "text-primary-600 font-medium bg-primary-50"
                               : "text-gray-500 hover:text-gray-900 hover:bg-gray-50"
@@ -211,6 +230,11 @@ const AppLayout = () => {
                         }
                       >
                         {child.name}
+                        {child.badge && (
+                           <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                             {child.badge}
+                           </span>
+                        )}
                       </NavLink>
                     ))}
                   </div>

@@ -6,6 +6,7 @@ import POSPage from "./pages/POS/POSPage";
 import DashboardPage from "./pages/Dashboard/DashboardPage";
 import MasterBarang from "./pages/Inventory/MasterBarang";
 import Inbound from "./pages/Inventory/Inbound";
+import ApprovalInbound from "./pages/Inventory/ApprovalInbound";
 import ShiftPage from "./pages/Auth/ShiftPage";
 import PembukuanPage from "./pages/Pembukuan/PembukuanPage";
 
@@ -31,6 +32,7 @@ function App() {
             <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/pembukuan" element={<PembukuanPage />} />
+              <Route path="/inventory/approval" element={<ApprovalInbound />} />
             </Route>
           </Route>
         </Route>
