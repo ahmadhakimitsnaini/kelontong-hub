@@ -67,9 +67,43 @@ db.version(4).stores({
   cash_reconciliation: '++id, timestamp, shift_id',
 });
 
+// ── VERSI 5: Penyatuan Stok (Gudang & Etalase Dihapus) ────────────────────────
+// Stok gudang dan etalase digabung kembali menjadi 'stok' tunggal.
+db.version(5).stores({
+  products: '++id, kategori, expiry_date, nama, barcode, stok',
+  transactions: '++id, shift_id, timestamp, synced',
+  shifts: '++id, user_id, start_time, end_time, synced',
+  expenses: '++id, shift_id, timestamp, synced',
+  journal_entries: '++id, timestamp, account_name, type, reference_id, reference_type',
+  debts: '++id, supplier_name, due_date, status, created_at',
+  receivables: '++id, customer_name, status, last_updated',
+  cash_reconciliation: '++id, timestamp, shift_id',
+}).upgrade(tx => {
+  return tx.products.toCollection().modify(product => {
+    const etalase = product.stok_etalase !== undefined ? product.stok_etalase : 0;
+    const gudang = product.stok_gudang !== undefined ? product.stok_gudang : 0;
+    product.stok = etalase + gudang;
+    delete product.stok_etalase;
+    delete product.stok_gudang;
+  });
+});
+
+// ── VERSI 6: Tabel Riwayat Inbound (Inbound Logs) ──────────────────────────────
+db.version(6).stores({
+  products: '++id, kategori, expiry_date, nama, barcode, stok',
+  transactions: '++id, shift_id, timestamp, synced',
+  shifts: '++id, user_id, start_time, end_time, synced',
+  expenses: '++id, shift_id, timestamp, synced',
+  journal_entries: '++id, timestamp, account_name, type, reference_id, reference_type',
+  debts: '++id, supplier_name, due_date, status, created_at',
+  receivables: '++id, customer_name, status, last_updated',
+  cash_reconciliation: '++id, timestamp, shift_id',
+  inbound_logs: '++id, timestamp, kasir_nama, synced'
+});
+
 // ── HOOKS ────────────────────────────────────────────────────────────────────
 // Secara otomatis set synced = 0 setiap ada insert baru ke tabel yang butuh disinkronkan
-const syncableTables = ['transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation'];
+const syncableTables = ['transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation', 'inbound_logs'];
 
 syncableTables.forEach(tableName => {
   db[tableName].hook('creating', function (primKey, obj, transaction) {
