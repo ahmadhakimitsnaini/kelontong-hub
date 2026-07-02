@@ -88,8 +88,8 @@ db.version(5).stores({
   });
 });
 
-// ── VERSI 6: Tabel Riwayat Inbound (Inbound Logs) ──────────────────────────────
-db.version(6).stores({
+// ── VERSI 7: Persetujuan Inbound (Approval Workflow) ─────────────────────────
+db.version(7).stores({
   products: '++id, kategori, expiry_date, nama, barcode, stok',
   transactions: '++id, shift_id, timestamp, synced',
   shifts: '++id, user_id, start_time, end_time, synced',
@@ -98,7 +98,7 @@ db.version(6).stores({
   debts: '++id, supplier_name, due_date, status, created_at',
   receivables: '++id, customer_name, status, last_updated',
   cash_reconciliation: '++id, timestamp, shift_id',
-  inbound_logs: '++id, timestamp, kasir_nama, synced'
+  inbound_logs: '++id, timestamp, kasir_nama, status, synced'
 });
 
 // ── HOOKS ────────────────────────────────────────────────────────────────────
