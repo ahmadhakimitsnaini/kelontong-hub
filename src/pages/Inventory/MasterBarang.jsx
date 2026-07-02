@@ -5,13 +5,7 @@ import db from '../../db/db';
 import useNotificationStore from '../../store/useNotificationStore';
 import DualImageUploader from './DualImageUploader';
 
-const formatRupiah = (number) => {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0
-  }).format(number);
-};
+import { formatRupiah, formatRibuan } from '../../lib/utils';
 
 const MasterBarang = () => {
   const { showAlert } = useNotificationStore();
@@ -350,10 +344,12 @@ const MasterBarang = () => {
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">Rp</span>
                 <input
                   required
-                  type="number"
-                  min="0"
-                  value={formData.harga_beli}
-                  onChange={(e) => setFormData({...formData, harga_beli: e.target.value})}
+                  type="text"
+                  value={formatRibuan(formData.harga_beli)}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/\D/g, '');
+                    setFormData({...formData, harga_beli: raw ? Number(raw) : ''});
+                  }}
                   placeholder="0"
                   className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none font-bold text-gray-800 transition-colors"
                 />
@@ -367,10 +363,12 @@ const MasterBarang = () => {
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">Rp</span>
                 <input
                   required
-                  type="number"
-                  min="0"
-                  value={formData.harga_jual}
-                  onChange={(e) => setFormData({...formData, harga_jual: e.target.value})}
+                  type="text"
+                  value={formatRibuan(formData.harga_jual)}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/\D/g, '');
+                    setFormData({...formData, harga_jual: raw ? Number(raw) : ''});
+                  }}
                   placeholder="0"
                   className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none font-bold text-gray-800 transition-colors"
                 />

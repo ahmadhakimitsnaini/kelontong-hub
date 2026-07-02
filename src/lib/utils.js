@@ -186,3 +186,16 @@ export const formatWaktu = (timestamp, filter) => {
   const dateStr = date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
   return `${dateStr}, ${timeStr}`
 }
+
+/**
+ * Memformat angka menjadi format string dengan pemisah ribuan (titik).
+ * Cocok digunakan pada form input text.
+ * @param {number|string} angka
+ * @returns {string} - Contoh: "1.500.000"
+ */
+export const formatRibuan = (angka) => {
+  if (angka === null || angka === undefined || angka === '') return '';
+  const cleaned = String(angka).replace(/\D/g, '');
+  if (!cleaned) return '';
+  return new Intl.NumberFormat('id-ID').format(Number(cleaned));
+}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Search, Plus, Minus, Trash2, ShoppingBag, X, CheckCircle, CreditCard, Banknote, Wallet } from 'lucide-react'
 import useCartStore from '../../store/useCartStore'
-import { formatRupiah } from '../../lib/utils'
+import { formatRupiah, formatRibuan } from '../../lib/utils'
 import db from '../../db/db'
 import useNotificationStore from '../../store/useNotificationStore'
 
@@ -334,10 +334,13 @@ const POSPage = () => {
                 <div className="animate-in slide-in-from-top-2 duration-300">
                   <label className="block text-sm font-bold text-gray-700 mb-2">Uang Diterima (Rp)</label>
                   <input
-                    type="number"
-                    placeholder="Contoh: 50000"
-                    value={amountPaid}
-                    onChange={(e) => setAmountPaid(e.target.value)}
+                    type="text"
+                    placeholder="0"
+                    value={formatRibuan(amountPaid)}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, '');
+                      setAmountPaid(raw ? Number(raw) : '');
+                    }}
                     className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-lg font-semibold focus:outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/20 transition-all bg-white text-gray-800"
                   />
                   {/* Shortcut Nominal Cepat */}

@@ -11,7 +11,7 @@ import {
 } from 'recharts'
 import { useLiveQuery } from 'dexie-react-hooks'
 import db from '../../db/db'
-import { formatRupiah, formatTanggal, formatTanggalSingkat, TIME_RANGE_OPTIONS, getTimeRangeBounds } from '../../lib/utils'
+import { formatRupiah, formatRibuan, formatTanggal, formatTanggalSingkat, TIME_RANGE_OPTIONS, getTimeRangeBounds } from '../../lib/utils'
 import useNotificationStore from '../../store/useNotificationStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -655,7 +655,7 @@ const TabHutang = ({ debts, refetch }) => {
             <div><label className="block text-xs font-medium text-gray-500 mb-1">Keterangan Barang</label>
               <input type="text" value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Contoh: Sabun, Shampoo, Mie" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" /></div>
             <div><label className="block text-xs font-medium text-gray-500 mb-1">Total Tagihan (Rp) *</label>
-              <input type="number" required value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} placeholder="500000" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" /></div>
+              <input type="text" required value={formatRibuan(form.amount)} onChange={e => setForm({...form, amount: e.target.value.replace(/\D/g, '') ? Number(e.target.value.replace(/\D/g, '')) : ''})} placeholder="0" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" /></div>
             <div><label className="block text-xs font-medium text-gray-500 mb-1">Jatuh Tempo *</label>
               <input type="date" required value={form.due_date} onChange={e => setForm({...form, due_date: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" /></div>
             <div className="sm:col-span-2 flex gap-3">
@@ -848,9 +848,9 @@ const TabPiutang = ({ receivables }) => {
             <div><label className="block text-xs font-medium text-gray-500 mb-1">No HP (untuk kirim WA)</label>
               <input type="text" value={form.customer_phone} onChange={e => setForm({...form, customer_phone: e.target.value})} placeholder="08123456789" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" /></div>
             <div><label className="block text-xs font-medium text-gray-500 mb-1">Jumlah Kasbon (Rp) *</label>
-              <input type="number" required value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} placeholder="50000" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" /></div>
+              <input type="text" required value={formatRibuan(form.amount)} onChange={e => setForm({...form, amount: e.target.value.replace(/\D/g, '') ? Number(e.target.value.replace(/\D/g, '')) : ''})} placeholder="0" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" /></div>
             <div><label className="block text-xs font-medium text-gray-500 mb-1">Batas Limit Kasbon (Rp, opsional)</label>
-              <input type="number" value={form.credit_limit} onChange={e => setForm({...form, credit_limit: e.target.value})} placeholder="200000" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" /></div>
+              <input type="text" value={formatRibuan(form.credit_limit)} onChange={e => setForm({...form, credit_limit: e.target.value.replace(/\D/g, '') ? Number(e.target.value.replace(/\D/g, '')) : ''})} placeholder="0" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" /></div>
             <div className="sm:col-span-2 flex gap-3">
               <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">Simpan</button>
               <button type="button" onClick={() => setShowForm(false)} className="border border-gray-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">Batal</button>
@@ -999,7 +999,7 @@ const TabRekonsiliasi = ({ transactions, reconciliations }) => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Total Uang di Laci Kasir (Rp)</label>
-              <input type="number" value={physicalCash} onChange={e => setPhysicalCash(e.target.value)} placeholder="Masukkan hasil hitungan uang fisik..." className="w-full px-3 py-3 border-2 border-gray-200 rounded-xl text-lg font-semibold focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none" />
+              <input type="text" value={formatRibuan(physicalCash)} onChange={e => setPhysicalCash(e.target.value.replace(/\D/g, '') ? Number(e.target.value.replace(/\D/g, '')) : '')} placeholder="Masukkan hasil hitungan uang fisik..." className="w-full px-3 py-3 border-2 border-gray-200 rounded-xl text-lg font-semibold focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none" />
             </div>
 
             {/* Preview Selisih */}
