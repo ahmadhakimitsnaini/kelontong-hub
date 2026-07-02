@@ -322,9 +322,9 @@ const CameraEngine = () => {
     if (!kulakanProduct || qty <= 0) return
 
     try {
-      const currentStok = kulakanProduct.stok_gudang || 0
+      const currentStok = kulakanProduct.stok || 0
       await db.products.update(kulakanProduct.id, {
-        stok_gudang: currentStok + qty,
+        stok: currentStok + qty,
       })
       showAlert(`✓ Stok ${kulakanProduct.nama} +${qty} (Gudang: ${currentStok + qty})`, 'success')
     } catch (err) {

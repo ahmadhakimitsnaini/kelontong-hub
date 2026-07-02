@@ -81,8 +81,8 @@ const KulakanQtyModal = ({ product, onConfirm, onCancel }) => {
             {/* Info Produk */}
             <div className="px-5 py-3 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
               <div>
-                <p className="text-xs text-gray-500">Stok Gudang Saat Ini</p>
-                <p className="font-bold text-blue-700 text-lg">{product.stok_gudang || 0} pcs</p>
+                <p className="text-xs text-gray-500">Sisa Stok Saat Ini</p>
+                <p className="font-bold text-blue-700 text-lg">{product.stok || 0} pcs</p>
               </div>
               <div className="text-right">
                 <p className="text-xs text-gray-500">Harga Beli</p>
@@ -123,9 +123,9 @@ const KulakanQtyModal = ({ product, onConfirm, onCancel }) => {
 
               {/* Preview Stok Setelah Ditambah */}
               <div className="mt-4 p-3 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-between">
-                <span className="text-sm text-gray-500">Stok gudang setelah masuk:</span>
+                <span className="text-sm text-gray-500">Stok setelah masuk:</span>
                 <span className="font-bold text-blue-600 text-lg">
-                  {(product.stok_gudang || 0) + qty} pcs
+                  {(product.stok || 0) + qty} pcs
                 </span>
               </div>
             </div>
