@@ -29,4 +29,32 @@ export default defineConfig({
       }
     })
   ],
+  build: {
+    // Naikkan batas peringatan ke 1MB agar build tidak terganggu warning
+    chunkSizeWarningLimit: 1000,
+
+    rollupOptions: {
+      output: {
+        // Pecah library besar menjadi chunk terpisah (Code Splitting)
+        // Agar browser bisa mengunduh paralel & cache lebih efisien
+        manualChunks: {
+          // Ekosistem React (jarang berubah, cocok untuk cache jangka panjang)
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+
+          // Library grafik (paling besar, pisahkan sendiri)
+          'vendor-recharts': ['recharts'],
+
+          // Library database IndexedDB
+          'vendor-dexie': ['dexie', 'dexie-react-hooks'],
+
+          // Library state management
+          'vendor-zustand': ['zustand'],
+
+          // Library icon (dipakai di mana-mana, pisahkan agar cache stabil)
+          'vendor-lucide': ['lucide-react'],
+        }
+      }
+    }
+  }
 })
+
