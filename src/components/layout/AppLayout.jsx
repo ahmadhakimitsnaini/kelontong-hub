@@ -14,7 +14,9 @@ import {
   Cloud,
   LogOut,
   UserCircle2,
-  ScanLine
+  ScanLine,
+  Boxes,
+  ChevronDown,
 } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import db from "../../db/db";
@@ -32,6 +34,12 @@ const AppLayout = () => {
   const [pendingCount, setPendingCount] = useState(0);
 
   const { isKasir, getFullName, getRole, logout } = useAuthStore();
+  const [openDropdowns, setOpenDropdowns] = useState({});
+
+  const toggleDropdown = (e, name) => {
+    e.preventDefault(); // Mencegah pindah halaman jika cuma ingin buka dropdown
+    setOpenDropdowns((prev) => ({ ...prev, [name]: !prev[name] }));
+  };
 
   // Pantau status koneksi internet untuk fitur Offline Sync
   useEffect(() => {
@@ -50,13 +58,13 @@ const AppLayout = () => {
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
     window.addEventListener("syncCompleted", handleSyncComplete);
-    
+
     // Initial sync & check
     checkPending();
     if (navigator.onLine) {
       syncAllPendingData();
     }
-    
+
     // Polling periodik (setiap 30 detik) untuk mengecek pending data atau memicu sync
     const syncInterval = setInterval(() => {
       checkPending();
@@ -81,29 +89,42 @@ const AppLayout = () => {
 
   // Ambil status shift aktif secara real-time dari database
   const activeShift = useLiveQuery(async () => {
-    const shifts = await db.shifts.orderBy('id').reverse().toArray();
+    const shifts = await db.shifts.orderBy("id").reverse().toArray();
     const latest = shifts[0];
-    return (latest && !latest.waktu_selesai) ? latest : null;
+    return latest && !latest.waktu_selesai ? latest : null;
   });
 
-  const formattedDate = currentTime.toLocaleDateString('id-ID', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+  const formattedDate = currentTime.toLocaleDateString("id-ID", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
   });
-  const formattedTime = currentTime.toLocaleTimeString('id-ID', {
-    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  const formattedTime = currentTime.toLocaleTimeString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
   });
 
   // Menu Navigasi Dasar
   const baseNavItems = [
     { name: "Kasir", path: "/kasir", icon: ShoppingCart },
-    { name: "Inventaris", path: "/inventaris", icon: Package },
+    {
+      name: "Inventory",
+      path: "/inventory",
+      icon: Boxes,
+      children: [
+        { name: "Master Barang", path: "/inventory/master" },
+        { name: "Inbound", path: "/inventory/inbound" },
+      ],
+    },
     { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
     { name: "Shift", path: "/shift", icon: Clock },
     { name: "Pembukuan", path: "/pembukuan", icon: BookOpen },
   ];
 
   // Filter Menu: Jika Kasir, hilangkan Dashboard dan Pembukuan
-  const navItems = baseNavItems.filter(item => {
+  const navItems = baseNavItems.filter((item) => {
     if (isKasir() && (item.name === "Dashboard" || item.name === "Pembukuan")) {
       return false;
     }
@@ -113,10 +134,10 @@ const AppLayout = () => {
   return (
     <div className="flex h-screen bg-background text-gray-800 font-sans overflow-hidden">
       <GlobalNotification />
-      
+
       {/* ── SMART SCANNER MODAL (Global, tersedia di semua halaman) ─── */}
       <SmartScannerModal />
-      
+
       {/* ── SIDEBAR (Tablet / Desktop) ───────────────────────────────────────── */}
       <aside className="hidden md:flex flex-col w-24 lg:w-64 bg-surface border-r border-gray-100 shadow-sm z-20 print:hidden">
         <div className="p-4 flex items-center justify-center lg:justify-start h-16 border-b border-gray-50">
@@ -128,25 +149,73 @@ const AppLayout = () => {
           </span>
         </div>
 
-        <nav className="flex-1 py-6 flex flex-col gap-2 px-3">
+        <nav className="flex-1 py-6 flex flex-col gap-2 px-3 overflow-y-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = location.pathname.startsWith(item.path);
+            const isActive =
+              location.pathname === item.path ||
+              location.pathname.startsWith(item.path + "/");
+            const hasChildren = item.children && item.children.length > 0;
+            const isOpen = openDropdowns[item.name] || isActive;
+
             return (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                className={`flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-200 group ${
-                  isActive
-                    ? "bg-primary-50 text-primary-600 font-medium"
-                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
-                }`}
-              >
-                <Icon
-                  className={`w-6 h-6 transition-transform ${isActive ? "scale-110" : "group-hover:scale-110"}`}
-                />
-                <span className="hidden lg:block">{item.name}</span>
-              </NavLink>
+              <div key={item.path} className="flex flex-col">
+                {hasChildren ? (
+                  <div
+                    onClick={(e) => toggleDropdown(e, item.name)}
+                    className={`flex items-center justify-between px-3 py-3 rounded-xl cursor-pointer transition-all duration-200 group ${
+                      isActive
+                        ? "bg-primary-50 text-primary-600 font-medium"
+                        : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Icon
+                        className={`w-6 h-6 transition-transform ${isActive ? "scale-110" : "group-hover:scale-110"}`}
+                      />
+                      <span className="hidden lg:block">{item.name}</span>
+                    </div>
+                    <ChevronDown
+                      className={`hidden lg:block w-4 h-4 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                    />
+                  </div>
+                ) : (
+                  <NavLink
+                    to={item.path}
+                    className={`flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-200 group ${
+                      isActive
+                        ? "bg-primary-50 text-primary-600 font-medium"
+                        : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                    }`}
+                  >
+                    <Icon
+                      className={`w-6 h-6 transition-transform ${isActive ? "scale-110" : "group-hover:scale-110"}`}
+                    />
+                    <span className="hidden lg:block">{item.name}</span>
+                  </NavLink>
+                )}
+
+                {/* Sub Menu / Dropdown Children */}
+                {hasChildren && isOpen && (
+                  <div className="hidden lg:flex flex-col ml-9 mt-1 gap-1 border-l-2 border-gray-100 pl-3">
+                    {item.children.map((child) => (
+                      <NavLink
+                        key={child.path}
+                        to={child.path}
+                        className={({ isActive: isChildActive }) =>
+                          `px-3 py-2 rounded-lg text-sm transition-colors ${
+                            isChildActive
+                              ? "text-primary-600 font-medium bg-primary-50"
+                              : "text-gray-500 hover:text-gray-900 hover:bg-gray-50"
+                          }`
+                        }
+                      >
+                        {child.name}
+                      </NavLink>
+                    ))}
+                  </div>
+                )}
+              </div>
             );
           })}
 
@@ -168,11 +237,15 @@ const AppLayout = () => {
               <UserCircle2 className="w-5 h-5 text-gray-500" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-gray-800 truncate">{getFullName()}</p>
-              <p className="text-[10px] uppercase font-bold text-primary-600 tracking-wider">{getRole()}</p>
+              <p className="text-sm font-bold text-gray-800 truncate">
+                {getFullName()}
+              </p>
+              <p className="text-[10px] uppercase font-bold text-primary-600 tracking-wider">
+                {getRole()}
+              </p>
             </div>
           </div>
-          <button 
+          <button
             onClick={logout}
             className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 mx-auto lg:mx-0"
             title="Keluar (Logout)"
@@ -193,10 +266,20 @@ const AppLayout = () => {
             </div>
             <div>
               <h2 className="font-semibold text-gray-800 leading-tight">
-                Shift Aktif: {activeShift ? <span className="text-primary-600 font-bold">{activeShift.nama_kasir}</span> : <span className="text-red-500 font-bold">Belum Buka Shift</span>}
+                Shift Aktif:{" "}
+                {activeShift ? (
+                  <span className="text-primary-600 font-bold">
+                    {activeShift.nama_kasir}
+                  </span>
+                ) : (
+                  <span className="text-red-500 font-bold">
+                    Belum Buka Shift
+                  </span>
+                )}
               </h2>
               <p className="text-xs text-gray-500 font-medium mt-0.5">
-                {formattedDate} • <span className="text-gray-700">{formattedTime}</span>
+                {formattedDate} •{" "}
+                <span className="text-gray-700">{formattedTime}</span>
               </p>
             </div>
           </div>
@@ -208,10 +291,16 @@ const AppLayout = () => {
                 !isOnline
                   ? "bg-red-50 text-red-600 border-red-100"
                   : pendingCount > 0
-                  ? "bg-yellow-50 text-yellow-600 border-yellow-100"
-                  : "bg-green-50 text-green-600 border-green-100"
+                    ? "bg-yellow-50 text-yellow-600 border-yellow-100"
+                    : "bg-green-50 text-green-600 border-green-100"
               }`}
-              title={!isOnline ? "Offline Mode" : pendingCount > 0 ? `${pendingCount} data tertunda` : "Semua tersinkronisasi"}
+              title={
+                !isOnline
+                  ? "Offline Mode"
+                  : pendingCount > 0
+                    ? `${pendingCount} data tertunda`
+                    : "Semua tersinkronisasi"
+              }
             >
               {!isOnline ? (
                 <CloudOff className="w-4 h-4" />
@@ -221,11 +310,11 @@ const AppLayout = () => {
                 <Cloud className="w-4 h-4" />
               )}
               <span className="hidden sm:inline">
-                {!isOnline 
-                  ? "Offline Mode" 
-                  : pendingCount > 0 
-                  ? `Syncing (${pendingCount})` 
-                  : "Cloud Synced"}
+                {!isOnline
+                  ? "Offline Mode"
+                  : pendingCount > 0
+                    ? `Syncing (${pendingCount})`
+                    : "Cloud Synced"}
               </span>
             </div>
           </div>
@@ -258,7 +347,9 @@ const AppLayout = () => {
                     : "text-gray-400 hover:text-gray-600"
                 }`}
               >
-                <div className={`relative p-1 rounded-full transition-all duration-300 ${isActive ? "bg-primary-50" : ""}`}>
+                <div
+                  className={`relative p-1 rounded-full transition-all duration-300 ${isActive ? "bg-primary-50" : ""}`}
+                >
                   <Icon className={`w-5 h-5 ${isActive ? "scale-110" : ""}`} />
                 </div>
                 <span className="text-[10px] font-medium">{item.name}</span>
@@ -280,7 +371,9 @@ const AppLayout = () => {
                 <div className="-mt-6 w-14 h-14 rounded-full bg-primary-500 flex items-center justify-center shadow-xl shadow-primary-500/40 border-4 border-white transition-all group-active:scale-90 group-hover:bg-primary-600">
                   <ScanLine className="w-6 h-6 text-white" />
                 </div>
-                <span className="text-[10px] font-medium text-primary-600">Scan</span>
+                <span className="text-[10px] font-medium text-primary-600">
+                  Scan
+                </span>
               </button>
 
               {rightItems.map(renderNavItem)}
