@@ -28,17 +28,20 @@ export const syncAllPendingData = async () => {
 
       console.log(`[Sync] Menemukan ${unsyncedRecords.length} data tertunda di tabel ${tableName}`);
 
-      // Hapus ID lokal (Dexie auto-increment) agar Supabase men-generate ID baru 
-      // (Bisa UUID atau auto-increment milik server) untuk mencegah bentrok ID antar perangkat.
+      // Persiapkan data untuk dikirim ke Supabase
       const payload = unsyncedRecords.map(record => {
-        const { id, synced, ...rest } = record;
+        // Hapus property 'synced' karena itu hanya metadata lokal
+        // KITA PERTAHANKAN 'id' (UUID) AGAR TIDAK DUPLIKASI
+        const { synced, ...rest } = record;
         return rest;
       });
 
-      // Kirim data ke Supabase
+      // Gunakan UPSERT: 
+      // Jika ID sudah ada di awan, timpa datanya (Update). 
+      // Jika ID belum ada, tambahkan baru (Insert).
       const { error } = await supabase
         .from(tableName)
-        .insert(payload);
+        .upsert(payload, { onConflict: 'id' });
 
       if (error) {
         console.error(`[Sync] Error saat insert ke Supabase tabel ${tableName}:`, error.message || error);

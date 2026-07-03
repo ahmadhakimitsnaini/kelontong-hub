@@ -102,13 +102,37 @@ db.version(7).stores({
 });
 
 // ── HOOKS ────────────────────────────────────────────────────────────────────
-// Secara otomatis set synced = 0 setiap ada insert baru ke tabel yang butuh disinkronkan
-const syncableTables = ['transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation', 'inbound_logs'];
+// Daftar semua tabel yang akan disinkronkan ke Cloud
+const syncableTables = ['products', 'transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation', 'inbound_logs'];
+
+const generateUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxx-xxxx-xxxx-xxxx'.replace(/[x]/g, () => (Math.random() * 16 | 0).toString(16));
+};
 
 syncableTables.forEach(tableName => {
+  // HOOK KETIKA INSERT (DATA BARU)
   db[tableName].hook('creating', function (primKey, obj, transaction) {
+    // Beri flag synced = 0
     if (typeof obj.synced === 'undefined') {
       obj.synced = 0;
+    }
+    // Paksa ID menggunakan UUID agar tidak tabrakan antar HP
+    if (!primKey || typeof primKey === 'number') {
+      const uuid = generateUUID();
+      obj.id = uuid;
+      return uuid;
+    }
+  });
+
+  // HOOK KETIKA UPDATE (DATA DIUBAH SEPERTI HARGA/STOK)
+  db[tableName].hook('updating', function (modifications, primKey, obj, transaction) {
+    // Jika perubahan BUKAN berasal dari proses tarikan Cloud (yang mengeset synced: 1)
+    // Maka kembalikan status synced menjadi 0 agar dikirim ulang ke Cloud
+    if (modifications.synced !== 1) {
+      return { synced: 0 };
     }
   });
 });
