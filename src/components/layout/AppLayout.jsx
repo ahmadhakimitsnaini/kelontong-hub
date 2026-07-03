@@ -55,9 +55,22 @@ const AppLayout = () => {
     const handleOffline = () => setIsOnline(false);
     const handleSyncComplete = () => checkPending();
 
+    // PELATUK INSTAN: Dipanggil sesaat setelah data ditulis ke IndexedDB
+    // Sehingga PUSH ke Supabase terjadi langsung, tidak perlu menunggu timer
+    let syncTimeout = null;
+    const handleIdbWrite = () => {
+      if (!navigator.onLine) return;
+      // Debounce 300ms agar tidak PUSH berkali-kali jika ada bulk insert
+      clearTimeout(syncTimeout);
+      syncTimeout = setTimeout(() => {
+        syncAllPendingData().then(checkPending);
+      }, 300);
+    };
+
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
     window.addEventListener("syncCompleted", handleSyncComplete);
+    window.addEventListener("idbWrite", handleIdbWrite);
 
     // Initial sync & check
     checkPending();
@@ -65,16 +78,18 @@ const AppLayout = () => {
       syncAllPendingData();
     }
 
-    // Polling periodik (setiap 30 detik) untuk mengecek pending data atau memicu sync
+    // Polling periodik (5 detik) sebagai jaring pengaman jika event terlewat
     const syncInterval = setInterval(() => {
       checkPending();
       if (navigator.onLine) syncAllPendingData();
-    }, 30000);
+    }, 5000);
 
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
       window.removeEventListener("syncCompleted", handleSyncComplete);
+      window.removeEventListener("idbWrite", handleIdbWrite);
+      clearTimeout(syncTimeout);
       clearInterval(syncInterval);
     };
   }, []);

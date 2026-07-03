@@ -125,6 +125,9 @@ syncableTables.forEach(tableName => {
       obj.id = uuid;
       return uuid;
     }
+    // Pancarkan sinyal bahwa ada data baru ditulis ke lokal
+    // Ditangkap AppLayout untuk langsung memicu PUSH ke Supabase
+    setTimeout(() => window.dispatchEvent(new Event('idbWrite')), 0);
   });
 
   // HOOK KETIKA UPDATE (DATA DIUBAH SEPERTI HARGA/STOK)
@@ -132,6 +135,8 @@ syncableTables.forEach(tableName => {
     // Jika perubahan BUKAN berasal dari proses tarikan Cloud (yang mengeset synced: 1)
     // Maka kembalikan status synced menjadi 0 agar dikirim ulang ke Cloud
     if (modifications.synced !== 1) {
+      // Pancarkan sinyal bahwa ada data diubah — AppLayout akan langsung PUSH
+      setTimeout(() => window.dispatchEvent(new Event('idbWrite')), 0);
       return { synced: 0 };
     }
   });
