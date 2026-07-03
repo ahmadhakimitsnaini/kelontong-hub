@@ -12,7 +12,7 @@
 
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
-import { pullFromSupabase } from '../lib/syncService'
+import { pullFromSupabase, subscribeToRealtime, unsubscribeRealtime } from '../lib/syncService'
 
 // ── KONSTANTA KEY UNTUK LOCALSTORAGE ─────────────────────────────────────────
 const SESSION_CACHE_KEY = 'auth_session_cache'
@@ -78,6 +78,9 @@ const useAuthStore = create((set, get) => ({
 
         // Tarik semua data dari cloud ke IndexedDB (Sinkronisasi awal)
         pullFromSupabase()
+        
+        // Aktifkan koneksi WebSocket (Realtime)
+        subscribeToRealtime()
       } else {
         // Tidak ada session dari server (offline atau belum login)
         // Coba fallback ke cache lokal
@@ -132,6 +135,9 @@ const useAuthStore = create((set, get) => ({
       // Tarik semua data dari cloud ke IndexedDB (Sinkronisasi awal)
       pullFromSupabase()
 
+      // Aktifkan koneksi WebSocket (Realtime)
+      subscribeToRealtime()
+
       return { success: true, error: null }
 
     } catch (err) {
@@ -147,6 +153,7 @@ const useAuthStore = create((set, get) => ({
    */
   logout: async () => {
     try {
+      unsubscribeRealtime()
       await supabase.auth.signOut()
     } catch (err) {
       // Tetap lanjutkan logout lokal meskipun request ke server gagal
@@ -212,6 +219,7 @@ supabase.auth.onAuthStateChange(async (event, session) => {
   }
 
   if (event === 'SIGNED_OUT') {
+    unsubscribeRealtime()
     clearCache()
     useAuthStore.setState({ session: null, user: null })
   }

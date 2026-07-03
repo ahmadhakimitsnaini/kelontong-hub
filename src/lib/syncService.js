@@ -130,3 +130,58 @@ export const pullFromSupabase = async () => {
   console.log('[Sync Pull] Proses selesai.');
   window.dispatchEvent(new Event('syncCompleted'));
 };
+
+/**
+ * Berlangganan (Subscribe) ke event Realtime Supabase (WebSocket).
+ * Jika ada perangkat lain yang melakukan perubahan (Insert/Update/Delete),
+ * perangkat ini akan langsung menerima datanya secara instan tanpa perlu refresh.
+ */
+let realtimeChannel = null;
+
+export const subscribeToRealtime = () => {
+  if (realtimeChannel) return; // Cegah double subscription
+
+  console.log('[Sync Realtime] Menghubungkan ke WebSocket Supabase...');
+
+  realtimeChannel = supabase
+    .channel('public-db-changes')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public' },
+      async (payload) => {
+        const { table, eventType, new: newRecord, old: oldRecord } = payload;
+        
+        // Pastikan tabel yang berubah adalah tabel yang kita pantau
+        if (syncableTables.includes(table)) {
+          console.log(`[Sync Realtime] Menerima ${eventType} dari tabel ${table}`, payload);
+          
+          try {
+            await db.transaction('rw', db[table], async () => {
+              if (eventType === 'INSERT' || eventType === 'UPDATE') {
+                // Simpan/Timpa ke IndexedDB lokal dengan flag synced: 1
+                await db[table].put({ ...newRecord, synced: 1 });
+              } else if (eventType === 'DELETE') {
+                // Hapus dari IndexedDB lokal
+                await db[table].delete(oldRecord.id);
+              }
+            });
+            // Beri tahu UI bahwa ada data baru agar di-render ulang
+            window.dispatchEvent(new Event('syncCompleted'));
+          } catch (err) {
+            console.error(`[Sync Realtime] Gagal memproses event ${eventType}:`, err);
+          }
+        }
+      }
+    )
+    .subscribe((status) => {
+      console.log('[Sync Realtime] Status Koneksi WebSocket:', status);
+    });
+};
+
+export const unsubscribeRealtime = () => {
+  if (realtimeChannel) {
+    supabase.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+    console.log('[Sync Realtime] WebSocket diputuskan.');
+  }
+};
