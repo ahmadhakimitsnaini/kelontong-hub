@@ -248,7 +248,7 @@ const Inbound = () => {
   };
 
   return (
-    <div className="max-w-[1400px] mx-auto p-4 md:p-6 pb-24 animate-in fade-in slide-in-from-bottom-4 duration-300 h-full flex flex-col relative">
+    <div className="max-w-[1400px] mx-auto p-4 md:p-6 pb-24 animate-in fade-in slide-in-from-bottom-4 duration-300 min-h-full flex flex-col relative">
       {/* Header & Navigasi Tab */}
       <div className="mb-6 flex-shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -285,9 +285,9 @@ const Inbound = () => {
 
       {/* ── TAB 1: INBOUND BARU ───────────────────────────────────────────── */}
       {activeTab === "inbound" && (
-        <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0 animate-in fade-in">
+        <div className="flex flex-col lg:flex-row gap-6 flex-1 lg:min-h-0 animate-in fade-in">
           {/* Kolom Kiri: Tabel Data Utama */}
-          <div className="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 min-h-0 overflow-hidden relative">
+          <div className="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 min-h-[60vh] lg:min-h-0 overflow-hidden relative">
             <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex-shrink-0 z-20 relative shadow-[0_4px_10px_-4px_rgba(0,0,0,0.05)]">
               <div className="relative">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
