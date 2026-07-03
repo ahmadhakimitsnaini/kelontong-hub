@@ -37,21 +37,16 @@ export default defineConfig({
       output: {
         // Pecah library besar menjadi chunk terpisah (Code Splitting)
         // Agar browser bisa mengunduh paralel & cache lebih efisien
-        manualChunks: {
-          // Ekosistem React (jarang berubah, cocok untuk cache jangka panjang)
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-
-          // Library grafik (paling besar, pisahkan sendiri)
-          'vendor-recharts': ['recharts'],
-
-          // Library database IndexedDB
-          'vendor-dexie': ['dexie', 'dexie-react-hooks'],
-
-          // Library state management
-          'vendor-zustand': ['zustand'],
-
-          // Library icon (dipakai di mana-mana, pisahkan agar cache stabil)
-          'vendor-lucide': ['lucide-react'],
+        // Menggunakan sintaks Function agar kompatibel dengan Vite 8 (Rolldown)
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) return 'vendor-react';
+            if (id.includes('recharts')) return 'vendor-recharts';
+            if (id.includes('dexie')) return 'vendor-dexie';
+            if (id.includes('zustand')) return 'vendor-zustand';
+            if (id.includes('lucide')) return 'vendor-lucide';
+            return 'vendor'; // Sisa library lainnya
+          }
         }
       }
     }
