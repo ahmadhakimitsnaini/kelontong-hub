@@ -94,7 +94,7 @@ const Inbound = () => {
     // Hitung total nilai modal (HPP) untuk integrasi akuntansi
     let totalHpp = 0;
     const itemsToProcess = [];
-    const productIds = Object.keys(pendingUpdates).map(Number);
+    const productIds = Object.keys(pendingUpdates);
 
     for (const id of productIds) {
       const product = await db.products.get(id);
@@ -146,66 +146,78 @@ const Inbound = () => {
       const logDocument = {
         timestamp,
         kasir_nama: getFullName(),
-        catatan: note || '-',
+        catatan: note || "-",
         total_sku: logItems.length,
         total_barang: totalBarangFisik,
         total_nilai: inboundSummary.totalHpp,
         sumber_dana: paymentMethod,
         items: logItems,
-        status: isAdmin ? 'APPROVED' : 'PENDING',
-        synced: 0
+        status: isAdmin ? "APPROVED" : "PENDING",
+        synced: 0,
       };
 
-      if (paymentMethod === 'Hutang') {
+      if (paymentMethod === "Hutang") {
         logDocument.hutang_info = {
           supplier_name: supplierName,
-          due_date: new Date(dueDate).getTime()
+          due_date: new Date(dueDate).getTime(),
         };
       }
 
       if (isAdmin) {
         // JIKA OWNER: Langsung eksekusi stok dan pembukuan secara Atomik
-        await db.transaction('rw', [db.products, db.inbound_logs, db.expenses, db.debts], async () => {
-          // Update Stok
-          for (const { product, qty } of inboundSummary.items) {
-            await db.products.update(product.id, { stok: (product.stok || 0) + qty });
-          }
-          // Catat Log
-          await db.inbound_logs.add(logDocument);
-          
-          // Akuntansi
-          if (inboundSummary.totalHpp > 0) {
-            if (paymentMethod === 'Kas Tunai') {
-              await db.expenses.add({
-                amount: inboundSummary.totalHpp,
-                description: `Inbound Langsung: ${note}`,
-                timestamp: new Date().getTime(),
-                synced: 0
-              });
-            } else if (paymentMethod === 'Hutang') {
-              await db.debts.add({
-                supplier_name: supplierName,
-                description: `Hutang Inbound: ${note}`,
-                amount: inboundSummary.totalHpp,
-                paid_amount: 0,
-                due_date: new Date(dueDate).getTime(),
-                status: 'UNPAID',
-                created_at: Date.now()
+        await db.transaction(
+          "rw",
+          [db.products, db.inbound_logs, db.expenses, db.debts],
+          async () => {
+            // Update Stok
+            for (const { product, qty } of inboundSummary.items) {
+              await db.products.update(product.id, {
+                stok: (product.stok || 0) + qty,
               });
             }
-          }
-        });
-        showAlert(`Inbound berhasil! Stok langsung ditambahkan karena Anda adalah Owner.`, 'success');
+            // Catat Log
+            await db.inbound_logs.add(logDocument);
+
+            // Akuntansi
+            if (inboundSummary.totalHpp > 0) {
+              if (paymentMethod === "Kas Tunai") {
+                await db.expenses.add({
+                  amount: inboundSummary.totalHpp,
+                  description: `Inbound Langsung: ${note}`,
+                  timestamp: new Date().getTime(),
+                  synced: 0,
+                });
+              } else if (paymentMethod === "Hutang") {
+                await db.debts.add({
+                  supplier_name: supplierName,
+                  description: `Hutang Inbound: ${note}`,
+                  amount: inboundSummary.totalHpp,
+                  paid_amount: 0,
+                  due_date: new Date(dueDate).getTime(),
+                  status: "UNPAID",
+                  created_at: Date.now(),
+                });
+              }
+            }
+          },
+        );
+        showAlert(
+          `Inbound berhasil! Stok langsung ditambahkan karena Anda adalah Owner.`,
+          "success",
+        );
       } else {
         // JIKA KASIR: Hanya masuk Draft
         await db.inbound_logs.add(logDocument);
-        showAlert(`Pengajuan Inbound berhasil dikirim ke Owner untuk di-approve!`, 'success');
-        
-        const ownerPhone = '6285737421084'; 
+        showAlert(
+          `Pengajuan Inbound berhasil dikirim ke Owner untuk di-approve!`,
+          "success",
+        );
+
+        const ownerPhone = "6285737421084";
         const approvalUrl = `${window.location.origin}/inventory/approval`;
         const waMessage = `Halo Bos, saya ${getFullName()} (Kasir). Ada pengajuan Inbound barang masuk senilai *${formatRupiah(inboundSummary.totalHpp)}* (${logItems.length} SKU).\n\nCatatan: ${note}\n\nMohon segera di-*Approve* melalui link berikut agar stok dapat dijual:\n${approvalUrl}`;
         const waLink = `https://wa.me/${ownerPhone}?text=${encodeURIComponent(waMessage)}`;
-        window.open(waLink, '_blank');
+        window.open(waLink, "_blank");
       }
 
       // Reset State
@@ -433,7 +445,9 @@ const Inbound = () => {
                 }`}
               >
                 <Save className="w-5 h-5" />
-                {!isKasir() ? 'Simpan & Tambah Stok' : 'Ajukan Inbound ke Owner'}
+                {!isKasir()
+                  ? "Simpan & Tambah Stok"
+                  : "Ajukan Inbound ke Owner"}
               </button>
             </div>
           </div>
@@ -559,7 +573,11 @@ const Inbound = () => {
                 className="w-full py-3.5 bg-primary-500 hover:bg-primary-600 text-white font-bold rounded-xl shadow-lg shadow-primary-500/30 transition-all active:scale-95 flex items-center justify-center gap-2"
               >
                 <CheckCircle className="w-5 h-5" />
-                {isSubmitting ? 'Memproses...' : (!isKasir() ? 'Konfirmasi & Tambah Stok' : 'Konfirmasi & Kirim WA ke Owner')}
+                {isSubmitting
+                  ? "Memproses..."
+                  : !isKasir()
+                    ? "Konfirmasi & Tambah Stok"
+                    : "Konfirmasi & Kirim WA ke Owner"}
               </button>
             </div>
           </div>
