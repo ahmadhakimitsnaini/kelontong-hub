@@ -2,7 +2,7 @@ import db from '../db/db'
 import { supabase } from './supabase'
 import useAuthStore from '../store/useAuthStore'
 
-const syncableTables = ['transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation'];
+const syncableTables = ['products', 'transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation', 'inbound_logs'];
 
 /**
  * Mensinkronisasi semua data yang tertunda ke Supabase.
@@ -79,4 +79,51 @@ export const getPendingSyncCount = async () => {
     count += unsynced.length;
   }
   return count;
+};
+
+/**
+ * Menarik (Pull) semua data dari Supabase ke IndexedDB Lokal.
+ * Sangat berguna saat user pertama kali login di perangkat baru.
+ */
+export const pullFromSupabase = async () => {
+  if (!navigator.onLine) {
+    console.log('[Sync Pull] Offline, batal menarik data.');
+    return;
+  }
+
+  console.log('[Sync Pull] Memulai penarikan data dari Supabase...');
+
+  for (const tableName of syncableTables) {
+    try {
+      if (!db[tableName]) continue;
+
+      // Ambil seluruh data dari tabel Supabase
+      const { data, error } = await supabase.from(tableName).select('*');
+
+      if (error) {
+        console.error(`[Sync Pull] Gagal mengambil data tabel ${tableName}:`, error.message);
+        continue;
+      }
+
+      if (data && data.length > 0) {
+        // Hapus data lokal dan timpa dengan data dari Cloud (Source of Truth)
+        // Kita tambahkan flag synced: 1 agar tidak di-push balik ke cloud
+        const recordsToInsert = data.map(item => ({ ...item, synced: 1 }));
+        
+        await db.transaction('rw', db[tableName], async () => {
+          // Bersihkan tabel lokal agar tidak ada duplikasi ID
+          await db[tableName].clear();
+          // Masukkan data dari cloud
+          await db[tableName].bulkAdd(recordsToInsert);
+        });
+
+        console.log(`[Sync Pull] Berhasil menarik ${data.length} baris untuk tabel ${tableName}`);
+      }
+    } catch (err) {
+      console.error(`[Sync Pull] Kesalahan memproses tabel ${tableName}:`, err);
+    }
+  }
+
+  console.log('[Sync Pull] Proses selesai.');
+  window.dispatchEvent(new Event('syncCompleted'));
 };

@@ -12,6 +12,7 @@
 
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
+import { pullFromSupabase } from '../lib/syncService'
 
 // ── KONSTANTA KEY UNTUK LOCALSTORAGE ─────────────────────────────────────────
 const SESSION_CACHE_KEY = 'auth_session_cache'
@@ -74,6 +75,9 @@ const useAuthStore = create((set, get) => ({
         const profile = await get()._fetchProfile(session.user.id)
         saveToCache(session, profile)
         set({ session, user: { ...session.user, ...profile } })
+
+        // Tarik semua data dari cloud ke IndexedDB (Sinkronisasi awal)
+        pullFromSupabase()
       } else {
         // Tidak ada session dari server (offline atau belum login)
         // Coba fallback ke cache lokal
@@ -124,6 +128,10 @@ const useAuthStore = create((set, get) => ({
       const profile = await get()._fetchProfile(data.session.user.id)
       saveToCache(data.session, profile)
       set({ session: data.session, user: { ...data.session.user, ...profile } })
+      
+      // Tarik semua data dari cloud ke IndexedDB (Sinkronisasi awal)
+      pullFromSupabase()
+
       return { success: true, error: null }
 
     } catch (err) {
