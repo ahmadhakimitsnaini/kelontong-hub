@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Outlet, NavLink, useLocation } from "react-router-dom";
+import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   ShoppingCart,
   LayoutDashboard,
@@ -17,6 +17,7 @@ import {
   ScanLine,
   Boxes,
   ChevronDown,
+  X
 } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import db from "../../db/db";
@@ -30,8 +31,10 @@ const AppLayout = () => {
   const { openScanner } = useScannerStore();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const location = useLocation();
+  const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [pendingCount, setPendingCount] = useState(0);
+  const [activeMobileSheet, setActiveMobileSheet] = useState(null);
 
   const { isKasir, getFullName, getRole, logout } = useAuthStore();
   const [openDropdowns, setOpenDropdowns] = useState({});
@@ -376,6 +379,30 @@ const AppLayout = () => {
           const renderNavItem = (item) => {
             const Icon = item.icon;
             const isActive = location.pathname.startsWith(item.path);
+            const hasChildren = item.children && item.children.length > 0;
+
+            if (hasChildren) {
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => setActiveMobileSheet(item)}
+                  className={`flex flex-col items-center justify-center w-full h-full gap-1 transition-colors ${
+                    isActive ? "text-primary-600" : "text-gray-400 hover:text-gray-600"
+                  }`}
+                >
+                  <div className={`relative p-1 rounded-full transition-all duration-300 ${isActive ? "bg-primary-50" : ""}`}>
+                    <Icon className={`w-5 h-5 ${isActive ? "scale-110" : ""}`} />
+                    {item.badge && (
+                      <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white animate-bounce">
+                        {item.badge}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] font-medium">{item.name}</span>
+                </button>
+              );
+            }
+
             return (
               <NavLink
                 key={item.path}
@@ -420,6 +447,56 @@ const AppLayout = () => {
           );
         })()}
       </nav>
+
+      {/* ── MOBILE BOTTOM SHEET UNTUK MENU DENGAN CHILDREN ── */}
+      {activeMobileSheet && (
+        <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
+          {/* Overlay gelap memudar */}
+          <div 
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={() => setActiveMobileSheet(null)}
+          />
+          
+          {/* Panel Bawah */}
+          <div className="relative bg-surface rounded-t-3xl shadow-2xl p-5 pb-8 animate-in slide-in-from-bottom-full duration-300">
+            {/* Gagang Tarik (Handle) */}
+            <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-5" />
+            
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <activeMobileSheet.icon className="w-6 h-6 text-primary-500" />
+                Menu {activeMobileSheet.name}
+              </h3>
+              <button 
+                onClick={() => setActiveMobileSheet(null)}
+                className="p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {activeMobileSheet.children.map(child => (
+                <button
+                  key={child.path}
+                  onClick={() => {
+                    setActiveMobileSheet(null);
+                    navigate(child.path);
+                  }}
+                  className="flex items-center justify-between p-4 bg-gray-50 border border-gray-100 rounded-2xl active:bg-primary-50 active:border-primary-100 transition-colors text-left"
+                >
+                  <span className="font-semibold text-gray-700">{child.name}</span>
+                  {child.badge && (
+                    <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-lg shadow-sm">
+                      {child.badge} Pending
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
