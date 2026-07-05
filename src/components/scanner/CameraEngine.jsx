@@ -1,22 +1,20 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Html5Qrcode } from 'html5-qrcode'
-import { X, Wand2, Camera, ChevronLeft, Loader2, Package } from 'lucide-react'
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
+import { X, Camera, ChevronLeft, Loader2, Package } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import useScannerStore from '../../store/useScannerStore'
 import useCartStore from '../../store/useCartStore'
 import useNotificationStore from '../../store/useNotificationStore'
-import { supabase } from '../../lib/supabase'
 import db from '../../db/db'
 import { formatRupiah } from '../../lib/utils'
 import KulakanQtyModal from './KulakanQtyModal'
-import MagicScanResultSheet from './MagicScanResultSheet'
 
 /** ID elemen div tempat html5-qrcode merender video kamera */
 const READER_ID = 'smart-scanner-reader'
 
 /** Jeda minimal antar scan barcode yang sama (ms) — mencegah spam scan */
-const DEBOUNCE_MS = 2000
+const DEBOUNCE_MS = 800
 
 /**
  * CameraEngine
@@ -29,15 +27,10 @@ const DEBOUNCE_MS = 2000
  *  - PENJUALAN  → cari produk di Dexie → addItem ke CartStore
  *  - KULAKAN    → cari produk → tampilkan KulakanQtyModal → update stok Dexie
  *  - PRODUK_BARU → redirect ke /inventaris?barcode=XXX
- *
- * Magic Scan (AI Fallback):
- *  - Capture snapshot dari stream video
- *  - Kirim ke Supabase Edge Function
- *  - Tampilkan hasil prediksi via MagicScanResultSheet
  */
 const CameraEngine = () => {
   const navigate = useNavigate()
-  const { activeMode, isAutoScan, backToModeSelector, closeScanner } = useScannerStore()
+  const { activeMode, backToModeSelector, closeScanner } = useScannerStore()
   const addItem = useCartStore((s) => s.addItem)
   const { showAlert } = useNotificationStore()
 
@@ -45,7 +38,6 @@ const CameraEngine = () => {
   const scannerRef = useRef(null)        // Instance Html5Qrcode
   const lastCodeRef = useRef(null)       // Barcode terakhir yang diproses
   const lastTimeRef = useRef(0)          // Timestamp scan terakhir
-  const videoRef = useRef(null)          // Elemen <video> (untuk snapshot)
   const isMountedRef = useRef(true)      // Mencegah setState setelah unmount
 
   // ── State UI ────────────────────────────────────────────────────────────────
@@ -54,11 +46,9 @@ const CameraEngine = () => {
   const [isProcessing, setIsProcessing] = useState(false)
   const [lastScannedName, setLastScannedName] = useState(null)  // Feedback scan sukses
   const [isPaused, setIsPaused] = useState(false)               // Scanner dijeda (kulakan)
-  const [isMagicLoading, setIsMagicLoading] = useState(false)   // Loading AI
 
   // ── State Sub-Modal ──────────────────────────────────────────────────────────
   const [kulakanProduct, setKulakanProduct] = useState(null)    // Produk yang akan di-restock
-  const [magicResults, setMagicResults] = useState(null)        // Hasil prediksi AI
 
   // ── Label Mode ──────────────────────────────────────────────────────────────
   const modeLabels = {
@@ -68,8 +58,16 @@ const CameraEngine = () => {
   }
   const currentMode = modeLabels[activeMode] || modeLabels.PENJUALAN
 
+  // ── Haptic Feedback: Getaran singkat saat scan berhasil ────────────────────
+  const triggerHaptic = useCallback(() => {
+    try { navigator?.vibrate?.(80) } catch (e) { /* Tidak semua browser mendukung */ }
+  }, [])
+
   // ── Fungsi Routing: Proses Barcode Sesuai Mode ───────────────────────────────
   const processBarcode = useCallback(async (barcode) => {
+    // 1. Validasi Pola: Hanya proses teks berisi angka murni (8-14 digit)
+    if (!/^\d{8,14}$/.test(barcode)) return
+
     if (isProcessing) return
 
     // ── Anti-spam Debounce ──────────────────────────────────────────────────
@@ -77,6 +75,9 @@ const CameraEngine = () => {
     if (barcode === lastCodeRef.current && now - lastTimeRef.current < DEBOUNCE_MS) return
     lastCodeRef.current = barcode
     lastTimeRef.current = now
+
+    // ── Haptic: Getaran konfirmasi instan ───────────────────────────────────
+    triggerHaptic()
 
     setIsProcessing(true)
 
@@ -108,7 +109,8 @@ const CameraEngine = () => {
         }
 
       } else if (activeMode === 'KULAKAN') {
-        // ── Mode Kulakan: Jeda scanner, tampilkan input qty ─────────────────
+        // ── Mode Kulakan: Jeda scanner (hardware), tampilkan input qty ──────
+        try { scannerRef.current?.pause(true) } catch (e) {}
         setIsPaused(true)
         setKulakanProduct(product)
       }
@@ -121,7 +123,7 @@ const CameraEngine = () => {
         setIsProcessing(false)
       }
     }
-  }, [activeMode, isProcessing, addItem, showAlert, navigate, closeScanner])
+  }, [activeMode, isProcessing, addItem, showAlert, navigate, closeScanner, triggerHaptic])
 
   // ── Inisialisasi & Cleanup Kamera ───────────────────────────────────────────
   useEffect(() => {
@@ -130,30 +132,40 @@ const CameraEngine = () => {
 
     const startScanner = async () => {
       try {
-        html5QrCode = new Html5Qrcode(READER_ID, { verbose: false })
+        html5QrCode = new Html5Qrcode(READER_ID, { 
+          verbose: false,
+          // 2. Pembatasan Format: Hanya deteksi barcode ritel (mengabaikan QR Code dll)
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.CODE_128
+          ]
+        })
         scannerRef.current = html5QrCode
 
         await html5QrCode.start(
           { facingMode: 'environment' }, // Gunakan kamera belakang
           {
-            fps: 10,
+            fps: 15,
             aspectRatio: 1.7778, // Memaksa kamera ke rasio 16:9 agar memenuhi layar HP modern
-            // qrbox dihapus: sehingga area scan menjadi FULL FRAME (seluruh layar),
-            // pengguna tidak perlu membidik tepat di tengah kotak.
+            // 3. Area Pindai (qrbox): Persegi panjang horizontal agar lebih fokus & ringan
+            qrbox: (viewfinderWidth, viewfinderHeight) => {
+              return {
+                width: viewfinderWidth * 0.85,
+                height: 150
+              }
+            }
           },
           (decodedText) => {
             // onScanSuccess: dipanggil setiap kali barcode terdeteksi
-            if (!isAutoScan) return // Manual mode: abaikan scan otomatis
             processBarcode(decodedText)
           },
           () => {
             // onScanFailure: diabaikan (normal, frame tanpa barcode)
           }
         )
-
-        // Simpan referensi elemen video untuk keperluan snapshot (Magic Scan)
-        const videoEl = document.querySelector(`#${READER_ID} video`)
-        if (videoEl) videoRef.current = videoEl
 
         if (isMountedRef.current) setIsCameraReady(true)
 
@@ -198,124 +210,8 @@ const CameraEngine = () => {
       }
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  // Intentionally tidak include processBarcode & isAutoScan agar tidak restart kamera
+  // Intentionally tidak include processBarcode agar tidak restart kamera
 
-  // ── Tombol Capture Manual (Mode isAutoScan = false) ─────────────────────────
-  const handleManualCapture = () => {
-    if (!scannerRef.current || isPaused) return
-    scannerRef.current.getRunningTrackCapabilities()
-      .then(() => {
-        // Ambil frame terakhir yang sudah dianalisa
-        // html5-qrcode tidak expose manual capture, kita pakai canvas snapshot
-        captureSnapshot()
-      })
-      .catch(console.error)
-  }
-
-  // ── Snapshot Kamera untuk Magic Scan ─────────────────────────────────────────
-  const captureSnapshot = () => {
-    const video = videoRef.current
-    if (!video) return null
-
-    // Optimasi: Resize gambar agar tidak terlalu besar (Mencegah Payload Too Large / Timeout)
-    const MAX_WIDTH = 800
-    let width = video.videoWidth
-    let height = video.videoHeight
-
-    if (width > MAX_WIDTH) {
-      height = Math.floor(height * (MAX_WIDTH / width))
-      width = MAX_WIDTH
-    }
-
-    const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
-    const ctx = canvas.getContext('2d')
-    ctx.drawImage(video, 0, 0, width, height)
-    
-    // Kompresi JPEG ke kualitas 60%
-    return canvas.toDataURL('image/jpeg', 0.6)
-  }
-
-  // ── Magic Scan: Kirim gambar ke AI ──────────────────────────────────────────
-  const handleMagicScan = async () => {
-    const base64Image = captureSnapshot()
-    if (!base64Image) {
-      showAlert('Kamera belum siap, coba lagi.', 'error')
-      return
-    }
-
-    setIsMagicLoading(true)
-    setIsPaused(true)
-
-    try {
-      // Ambil katalog dari Dexie (Offline-first approach)
-      // Hanya kirim field penting agar payload hemat kuota
-      const allProducts = await db.products.toArray()
-      const catalog = allProducts.map(p => ({
-        id: p.id,
-        nama: p.nama,
-        kategori: p.kategori,
-        harga_jual: p.harga_jual
-      }))
-
-      const { data, error } = await supabase.functions.invoke('analyze-product-image', {
-        body: { image: base64Image, catalog },
-      })
-
-      if (error) {
-        console.error('[MagicScan] Edge Function Error:', error)
-        throw new Error(error.message || 'Gagal terhubung ke Edge Function')
-      }
-
-      if (data?.error) {
-        console.error('[MagicScan] Server Logic Error:', data.error)
-        throw new Error(data.error)
-      }
-
-      if (data?.results && data.results.length > 0) {
-        setMagicResults(data.results)
-      } else {
-        showAlert('AI tidak dapat mengenali produk ini. Coba scan barcode atau foto lebih jelas.', 'error')
-        setIsPaused(false)
-      }
-    } catch (err) {
-      console.error('[MagicScan] Detail Error Lengkap:', err)
-      showAlert(`Gagal: ${err.message || 'Periksa koneksi internet Anda.'}`, 'error')
-      setIsPaused(false)
-    } finally {
-      setIsMagicLoading(false)
-    }
-  }
-
-  // ── Callback: Konfirmasi Magic Scan (AI) ───────────────────────────────────
-  const handleMagicScanConfirm = (product) => {
-    setMagicResults(null)
-    if (activeMode === 'KASIR') {
-      addItem({ ...product, qty: 1 })
-      showAlert(`✓ ${product.nama} ditambahkan dari Magic Scan`, 'success')
-      setLastScannedName(product.nama)
-      setTimeout(() => setLastScannedName(''), 2000)
-      setIsPaused(false)
-    } else if (activeMode === 'KULAKAN') {
-      if (product.id === 'NEW') {
-        showAlert('Barang belum ada di database. Silakan tambah di Produk Baru terlebih dahulu.', 'error')
-        setIsPaused(false)
-        return
-      }
-      setKulakanProduct(product)
-      setIsPaused(true)
-    } else if (activeMode === 'PRODUK_BARU') {
-      closeScanner()
-      if (product.id === 'NEW') {
-        // Jika AI menebak barang baru, kirim tebakannya ke form
-        navigate(`/inventaris?magic_name=${encodeURIComponent(product.nama)}&magic_category=${encodeURIComponent(product.kategori)}`)
-      } else {
-        // Jika AI ternyata menemukan barang tersebut di katalog
-        navigate(`/inventaris?barcode=magic_scan_${product.id}`)
-      }
-    }
-  }
 
   // ── Callback: Konfirmasi qty Kulakan ─────────────────────────────────────────
   const handleKulakanConfirm = async (qty) => {
@@ -334,6 +230,8 @@ const CameraEngine = () => {
       setKulakanProduct(null)
       setIsProcessing(false)
       setIsPaused(false)
+      // Resume hardware scanner setelah kulakan selesai
+      try { scannerRef.current?.resume() } catch (e) {}
     }
   }
 
@@ -405,7 +303,7 @@ const CameraEngine = () => {
 
           {/* Viewfinder / Crosshair (UI Baru Lebih Besar) */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 overflow-hidden">
-            <div className="relative w-[85%] max-w-sm aspect-[4/3] rounded-3xl shadow-[0_0_0_9999px_rgba(0,0,0,0.55)]">
+            <div className="relative w-[85%] h-[150px] rounded-3xl">
               {/* Efek scan line animasi */}
               {!isPaused && (
                 <motion.div
@@ -461,75 +359,22 @@ const CameraEngine = () => {
           <div className="absolute bottom-0 left-0 right-0 z-10 pb-10 pt-4 px-6 bg-gradient-to-t from-black/80 to-transparent">
             <div className="flex items-center justify-center gap-5">
 
-              {/* Tombol Magic Scan (AI) */}
-              <button
-                id="magic-scan-btn"
-                onClick={handleMagicScan}
-                disabled={isMagicLoading || isPaused}
-                className="flex flex-col items-center gap-1.5 group"
-              >
-                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${
-                  isMagicLoading
-                    ? 'bg-violet-400 cursor-wait'
-                    : isPaused
-                    ? 'bg-white/10 cursor-not-allowed'
-                    : 'bg-violet-500/80 hover:bg-violet-500 active:scale-95'
-                } backdrop-blur-sm`}>
-                  {isMagicLoading
-                    ? <Loader2 className="w-6 h-6 text-white animate-spin" />
-                    : <Wand2 className="w-6 h-6 text-white" />
-                  }
-                </div>
-                <span className="text-white/70 text-[10px] font-medium">Magic Scan</span>
-              </button>
-
-              {/* Tombol Capture Manual (Hanya saat isAutoScan = false) */}
-              {!isAutoScan && (
-                <button
-                  id="manual-capture-btn"
-                  onClick={() => {
-                    // Paksa proses frame saat ini
-                    if (videoRef.current) {
-                      const canvas = document.createElement('canvas')
-                      canvas.width = videoRef.current.videoWidth
-                      canvas.height = videoRef.current.videoHeight
-                      canvas.getContext('2d').drawImage(videoRef.current, 0, 0)
-                      // html5-qrcode internal decode tidak bisa dipanggil langsung,
-                      // gunakan scan from canvas
-                    }
-                  }}
-                  disabled={isPaused}
-                  className="flex flex-col items-center gap-1.5 group"
-                >
-                  <div className={`w-20 h-20 rounded-full border-4 border-white flex items-center justify-center transition-all ${
-                    isPaused ? 'opacity-40' : 'active:scale-95 hover:bg-white/10'
-                  }`}>
-                    <div className="w-14 h-14 rounded-full bg-white" />
-                  </div>
-                  <span className="text-white/70 text-[10px] font-medium">Capture</span>
-                </button>
-              )}
-
               {/* Auto-Scan Indicator */}
-              {isAutoScan && (
-                <div className="flex flex-col items-center gap-1.5">
-                  <div className="w-14 h-14 rounded-2xl bg-emerald-500/30 border border-emerald-400/40 flex items-center justify-center">
-                    <motion.div
-                      animate={{ scale: [1, 1.2, 1] }}
-                      transition={{ duration: 1.5, repeat: Infinity }}
-                      className="w-3 h-3 rounded-full bg-emerald-400"
-                    />
-                  </div>
-                  <span className="text-white/70 text-[10px] font-medium">Auto Scan</span>
+              <div className="flex flex-col items-center gap-1.5">
+                <div className="w-14 h-14 rounded-2xl bg-emerald-500/30 border border-emerald-400/40 flex items-center justify-center">
+                  <motion.div
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ duration: 1.5, repeat: Infinity }}
+                    className="w-3 h-3 rounded-full bg-emerald-400"
+                  />
                 </div>
-              )}
+                <span className="text-white/70 text-[10px] font-medium">Auto Scan</span>
+              </div>
 
             </div>
 
             <p className="text-center text-white/40 text-xs mt-4">
-              {isAutoScan
-                ? 'Arahkan kamera ke barcode produk'
-                : 'Tekan Capture saat barcode dalam frame'}
+              Arahkan kamera ke barcode produk
             </p>
           </div>
         </>
@@ -543,19 +388,12 @@ const CameraEngine = () => {
           setKulakanProduct(null)
           setIsProcessing(false)
           setIsPaused(false)
+          // Resume hardware scanner saat user membatalkan kulakan
+          try { scannerRef.current?.resume() } catch (e) {}
         }}
       />
 
-      {/* ── Sub-Modal: Hasil Magic Scan AI ────────────────────────────────── */}
-      <MagicScanResultSheet
-        results={magicResults}
-        activeMode={activeMode}
-        onConfirm={handleMagicScanConfirm}
-        onCancel={() => {
-          setMagicResults(null)
-          setIsPaused(false)
-        }}
-      />
+
     </motion.div>
   )
 }
