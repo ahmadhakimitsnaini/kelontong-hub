@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Package, Search, Plus, ArrowLeft, Save, Edit, Trash2, Camera } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import db from '../../db/db';
@@ -23,6 +24,20 @@ const MasterBarang = () => {
     harga_jual: "",
     images: []
   });
+
+  // ── Fase 3: Tangkap barcode dari URL parameter (dari Scanner mode PRODUK_BARU) ──
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    const barcodeFromScanner = searchParams.get('barcode');
+    if (barcodeFromScanner) {
+      // Buka form dan isi field barcode secara otomatis
+      setFormData(prev => ({ ...prev, barcode: barcodeFromScanner }));
+      setIsFormOpen(true);
+      // Bersihkan URL agar tidak ter-trigger ulang saat navigasi
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const products = useLiveQuery(() => {
     if (searchQuery) {
