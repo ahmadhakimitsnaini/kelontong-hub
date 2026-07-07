@@ -149,6 +149,64 @@ const useAuthStore = create((set, get) => ({
   },
 
   /**
+   * register — Mendaftarkan user baru via Supabase Auth.
+   * Mengembalikan objek { success: boolean, error: string | null }
+   */
+  register: async (email, password, fullName) => {
+    set({ isLoading: true })
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+            role: 'kasir' // Default role
+          }
+        }
+      })
+
+      if (error) {
+        let friendlyError = error.message;
+        if (error.message.includes("User already registered")) {
+          friendlyError = "Email ini sudah terdaftar. Silakan login atau gunakan email lain.";
+        }
+        return { success: false, error: friendlyError }
+      }
+
+      // Jika berhasil signUp, Supabase akan mengirim email verifikasi (jika dikonfigurasi demikian)
+      return { success: true, error: null }
+
+    } catch (err) {
+      return { success: false, error: 'Terjadi kesalahan jaringan saat mencoba mendaftar.' }
+    } finally {
+      set({ isLoading: false })
+    }
+  },
+
+  /**
+   * resendVerificationEmail — Mengirim ulang email verifikasi.
+   */
+  resendVerificationEmail: async (email) => {
+    set({ isLoading: true })
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+      })
+
+      if (error) {
+        return { success: false, error: `Gagal mengirim ulang email: ${error.message}` }
+      }
+      return { success: true, error: null }
+    } catch (err) {
+      return { success: false, error: 'Terjadi kesalahan jaringan.' }
+    } finally {
+      set({ isLoading: false })
+    }
+  },
+
+  /**
    * logout — Akhiri sesi, bersihkan state dan cache lokal.
    */
   logout: async () => {
