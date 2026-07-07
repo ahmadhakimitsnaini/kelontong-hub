@@ -18,6 +18,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import db from "../../db/db";
 import useNotificationStore from "../../store/useNotificationStore";
 import useAuthStore from "../../store/useAuthStore";
+import useHardwareScanner from "../../hooks/useHardwareScanner";
+import { playSuccessBeep, playErrorBeep } from "../../lib/audioUtils";
 import { formatRupiah } from "../../lib/utils";
 
 const Inbound = () => {
@@ -80,6 +82,28 @@ const Inbound = () => {
   };
 
   const totalItemsToUpdate = Object.keys(pendingUpdates).length;
+
+  // ==========================================
+  // HARDWARE SCANNER INTEGRATION
+  // ==========================================
+  useHardwareScanner(async (barcode) => {
+    if (activeTab !== "inbound" || isPaymentModalOpen) return;
+    
+    try {
+      const product = await db.products.where('barcode').equals(barcode).first();
+      if (product) {
+        handleUpdateQty(product.id, 1);
+        playSuccessBeep();
+        showAlert(`+1 ${product.nama} disiapkan untuk Inbound`, "success");
+      } else {
+        playErrorBeep();
+        showAlert(`Barcode ${barcode} belum terdaftar di Master Barang!`, "error");
+      }
+    } catch (err) {
+      console.error('Error saat men-scan barcode di Inbound:', err);
+    }
+  }, { enabled: activeTab === "inbound" && !isPaymentModalOpen });
+  // ==========================================
 
   const handlePreSave = async (e) => {
     e.preventDefault();

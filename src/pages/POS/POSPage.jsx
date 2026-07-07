@@ -4,6 +4,8 @@ import useCartStore from '../../store/useCartStore'
 import { formatRupiah, formatRibuan } from '../../lib/utils'
 import db from '../../db/db'
 import useNotificationStore from '../../store/useNotificationStore'
+import useHardwareScanner from '../../hooks/useHardwareScanner'
+import { playSuccessBeep, playErrorBeep } from '../../lib/audioUtils'
 
 import { useLiveQuery } from 'dexie-react-hooks'
 
@@ -26,6 +28,27 @@ const POSPage = () => {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState('Tunai')
   const [amountPaid, setAmountPaid] = useState('')
+
+  // ==========================================
+  // HARDWARE SCANNER INTEGRATION
+  // ==========================================
+  useHardwareScanner(async (barcode) => {
+    try {
+      const product = await db.products.where('barcode').equals(barcode).first();
+      if (product) {
+        addItem(product);
+        playSuccessBeep();
+        // Optional: Tampilkan notifikasi pendek
+        useNotificationStore.getState().showAlert(`+1 ${product.nama}`, "success");
+      } else {
+        playErrorBeep();
+        useNotificationStore.getState().showAlert(`Barcode ${barcode} tidak ditemukan!`, "error");
+      }
+    } catch (err) {
+      console.error('Error saat men-scan barcode:', err);
+    }
+  }, { enabled: !isPaymentModalOpen }); // Nonaktifkan scanner saat modal pembayaran terbuka
+  // ==========================================
 
   // Ambil data produk asli dari database
   const dbProducts = useLiveQuery(() => db.products.toArray(), []) || []

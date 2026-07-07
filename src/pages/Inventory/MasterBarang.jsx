@@ -5,6 +5,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import db from '../../db/db';
 import useNotificationStore from '../../store/useNotificationStore';
 import DualImageUploader from './DualImageUploader';
+import useHardwareScanner from '../../hooks/useHardwareScanner';
+import { playSuccessBeep } from '../../lib/audioUtils';
 
 import { formatRupiah, formatRibuan } from '../../lib/utils';
 
@@ -24,6 +26,38 @@ const MasterBarang = () => {
     harga_jual: "",
     images: []
   });
+
+  // ==========================================
+  // HARDWARE SCANNER INTEGRATION
+  // ==========================================
+  useHardwareScanner(async (barcode) => {
+    try {
+      const product = await db.products.where('barcode').equals(barcode).first();
+      if (product) {
+        // Jika barang sudah terdaftar, cukup filter tabel
+        setSearchQuery(barcode);
+        setIsFormOpen(false); // Pastikan tabel terlihat
+        playSuccessBeep();
+      } else {
+        // Jika barang belum ada, buka form tambah dan pre-fill barcode
+        setFormData({
+          nama: "",
+          barcode: barcode,
+          kategori: "",
+          deskripsi: "",
+          harga_beli: "",
+          harga_jual: "",
+          images: []
+        });
+        setEditingId(null);
+        setIsFormOpen(true);
+        playSuccessBeep();
+      }
+    } catch (err) {
+      console.error('Error saat men-scan barcode di Master Barang:', err);
+    }
+  });
+  // ==========================================
 
   // ── Fase 3: Tangkap barcode dari URL parameter (dari Scanner mode PRODUK_BARU) ──
   const [searchParams, setSearchParams] = useSearchParams();
