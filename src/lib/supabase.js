@@ -20,7 +20,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,          // Simpan session ke localStorage
     autoRefreshToken: true,        // Auto refresh token di background
-    detectSessionInUrl: false,     // Tidak perlu OAuth callback URL
+    detectSessionInUrl: true,      // Aktifkan agar bisa menangkap token verifikasi dari email
     storageKey: 'toko_podjok_auth', // Key unik untuk localStorage
   }
 })
