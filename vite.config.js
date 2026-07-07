@@ -26,25 +26,7 @@ export default defineConfig({
   ],
   build: {
     // Naikkan batas peringatan ke 1MB agar build tidak terganggu warning
-    chunkSizeWarningLimit: 1000,
-
-    rollupOptions: {
-      output: {
-        // Pecah library besar menjadi chunk terpisah (Code Splitting)
-        // Agar browser bisa mengunduh paralel & cache lebih efisien
-        // Menggunakan sintaks Function agar kompatibel dengan Vite 8 (Rolldown)
-        manualChunks(id) {
-          if (id.includes('node_modules')) {
-            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) return 'vendor-react';
-            if (id.includes('recharts')) return 'vendor-recharts';
-            if (id.includes('dexie')) return 'vendor-dexie';
-            if (id.includes('zustand')) return 'vendor-zustand';
-            if (id.includes('lucide')) return 'vendor-lucide';
-            return 'vendor'; // Sisa library lainnya
-          }
-        }
-      }
-    }
+    chunkSizeWarningLimit: 1000
   }
 })
 
