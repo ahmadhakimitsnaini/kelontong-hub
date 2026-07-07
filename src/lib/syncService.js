@@ -1,6 +1,5 @@
 import db from '../db/db'
 import { supabase } from './supabase'
-import useAuthStore from '../store/useAuthStore'
 
 const syncableTables = ['products', 'transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation', 'inbound_logs'];
 

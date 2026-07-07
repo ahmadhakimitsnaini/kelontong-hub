@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
+import ErrorBoundary from './components/layout/ErrorBoundary'
 import useAuthStore from './store/useAuthStore'
 
 /**
@@ -13,11 +14,25 @@ import useAuthStore from './store/useAuthStore'
  * 3. Setelah selesai (berhasil atau gagal), App di-render.
  *    Komponen App akan membaca `isInitialized` dari store untuk
  *    menampilkan halaman login atau halaman utama.
+ *
+ * PENTING: Menggunakan .catch().finally() agar React SELALU di-render,
+ * bahkan jika restoreSession() gagal total (misal: error jaringan).
+ * Tanpa ini, layar akan blank putih selamanya jika terjadi exception.
  */
-useAuthStore.getState().restoreSession().then(() => {
+const renderApp = () => {
   createRoot(document.getElementById('root')).render(
     <StrictMode>
-      <App />
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
     </StrictMode>,
   )
-})
+}
+
+useAuthStore.getState().restoreSession()
+  .catch((err) => {
+    console.error('[Bootstrap] Gagal restore session:', err)
+  })
+  .finally(() => {
+    renderApp()
+  })
