@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Navigate, Link } from "react-router-dom";
+import { Navigate } from "react-router-dom";
 import { LogIn, Store, Loader2 } from "lucide-react";
 import useAuthStore from "../../store/useAuthStore";
 import useNotificationStore from "../../store/useNotificationStore";
@@ -9,6 +9,7 @@ const LoginPage = () => {
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showResend, setShowResend] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   const { login, isLoggedIn, isInitialized, resendVerificationEmail } = useAuthStore();
   const { showAlert } = useNotificationStore();
@@ -35,15 +36,18 @@ const LoginPage = () => {
     }
 
     setIsSubmitting(true);
+    setErrorMsg("");
     const { success, error } = await login(email, password);
     setIsSubmitting(false);
 
     if (success) {
       showAlert("Login berhasil!", "success");
       setShowResend(false);
+      setErrorMsg("");
       // Navigasi akan tertangani otomatis oleh kondisi isLoggedIn() di atas
     } else {
       showAlert(error, "error");
+      setErrorMsg(error);
       if (error.includes("belum dikonfirmasi")) {
         setShowResend(true);
       } else {
@@ -55,13 +59,16 @@ const LoginPage = () => {
   const handleResendEmail = async () => {
     if (!email.trim()) return;
     setIsSubmitting(true);
+    setErrorMsg("");
     const { success, error } = await resendVerificationEmail(email);
     setIsSubmitting(false);
     if (success) {
       showAlert("Email verifikasi telah dikirim ulang. Silakan cek inbox/spam Anda.", "success");
       setShowResend(false);
+      setErrorMsg("");
     } else {
       showAlert(error, "error");
+      setErrorMsg(error);
     }
   };
 
@@ -94,6 +101,13 @@ const LoginPage = () => {
               Gunakan kredensial Anda untuk melanjutkan
             </p>
           </div>
+
+          {errorMsg && (
+            <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-100 text-sm text-red-600 flex items-start">
+              <svg className="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <span>{errorMsg}</span>
+            </div>
+          )}
 
           <form className="space-y-6" onSubmit={handleLogin}>
             <div>
@@ -160,12 +174,6 @@ const LoginPage = () => {
               </div>
             )}
 
-            <div className="mt-6 text-center text-sm text-gray-600">
-              Belum punya akun?{" "}
-              <Link to="/register" className="font-bold text-primary-600 hover:text-primary-500">
-                Daftar di sini
-              </Link>
-            </div>
           </form>
 
           <div className="mt-6 text-center">
