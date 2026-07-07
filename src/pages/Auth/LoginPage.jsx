@@ -1,15 +1,16 @@
-import React, { useState } from 'react';
-import { Navigate } from 'react-router-dom';
-import { LogIn, Store, Loader2 } from 'lucide-react';
-import useAuthStore from '../../store/useAuthStore';
-import useNotificationStore from '../../store/useNotificationStore';
+import React, { useState } from "react";
+import { Navigate, Link } from "react-router-dom";
+import { LogIn, Store, Loader2 } from "lucide-react";
+import useAuthStore from "../../store/useAuthStore";
+import useNotificationStore from "../../store/useNotificationStore";
 
 const LoginPage = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showResend, setShowResend] = useState(false);
 
-  const { login, isLoggedIn, isInitialized } = useAuthStore();
+  const { login, isLoggedIn, isInitialized, resendVerificationEmail } = useAuthStore();
   const { showAlert } = useNotificationStore();
 
   // Jika belum selesai inisialisasi sesi, tampilkan layar loading kosong
@@ -29,7 +30,7 @@ const LoginPage = () => {
   const handleLogin = async (e) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
-      showAlert('Email dan Password wajib diisi.', 'error');
+      showAlert("Email dan Password wajib diisi.", "error");
       return;
     }
 
@@ -38,16 +39,34 @@ const LoginPage = () => {
     setIsSubmitting(false);
 
     if (success) {
-      showAlert('Login berhasil!', 'success');
+      showAlert("Login berhasil!", "success");
+      setShowResend(false);
       // Navigasi akan tertangani otomatis oleh kondisi isLoggedIn() di atas
     } else {
-      showAlert(error, 'error');
+      showAlert(error, "error");
+      if (error.includes("belum dikonfirmasi")) {
+        setShowResend(true);
+      } else {
+        setShowResend(false);
+      }
+    }
+  };
+
+  const handleResendEmail = async () => {
+    if (!email.trim()) return;
+    setIsSubmitting(true);
+    const { success, error } = await resendVerificationEmail(email);
+    setIsSubmitting(false);
+    if (success) {
+      showAlert("Email verifikasi telah dikirim ulang. Silakan cek inbox/spam Anda.", "success");
+      setShowResend(false);
+    } else {
+      showAlert(error, "error");
     }
   };
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
-      
       {/* Background Ornamen */}
       <div className="absolute top-0 left-0 w-full h-96 bg-primary-600 rounded-b-[4rem] sm:rounded-b-[8rem] shadow-xl transform -translate-y-12"></div>
 
@@ -67,10 +86,13 @@ const LoginPage = () => {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md relative z-10">
         <div className="bg-white py-8 px-4 shadow-2xl sm:rounded-2xl sm:px-10 border border-gray-100">
-          
           <div className="mb-6">
-            <h3 className="text-xl font-bold text-gray-900 text-center">Masuk ke Akun</h3>
-            <p className="text-sm text-gray-500 text-center mt-1">Gunakan kredensial Anda untuk melanjutkan</p>
+            <h3 className="text-xl font-bold text-gray-900 text-center">
+              Masuk ke Akun
+            </h3>
+            <p className="text-sm text-gray-500 text-center mt-1">
+              Gunakan kredensial Anda untuk melanjutkan
+            </p>
           </div>
 
           <form className="space-y-6" onSubmit={handleLogin}>
@@ -125,12 +147,29 @@ const LoginPage = () => {
                 )}
               </button>
             </div>
+            {showResend && (
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={handleResendEmail}
+                  disabled={isSubmitting}
+                  className="w-full flex justify-center items-center py-2 px-4 border border-primary-300 rounded-xl shadow-sm text-sm font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  Kirim Ulang Email Verifikasi
+                </button>
+              </div>
+            )}
+
+            <div className="mt-6 text-center text-sm text-gray-600">
+              Belum punya akun?{" "}
+              <Link to="/register" className="font-bold text-primary-600 hover:text-primary-500">
+                Daftar di sini
+              </Link>
+            </div>
           </form>
 
           <div className="mt-6 text-center">
-            <p className="text-xs text-gray-400">
-              Versi 2.0.0 &copy; 2026 Madura Digital
-            </p>
+            <p className="text-xs text-gray-400">Toko Podjok</p>
           </div>
         </div>
       </div>

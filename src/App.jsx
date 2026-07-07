@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import AppLayout from "./components/layout/AppLayout";
 import ProtectedRoute from "./components/layout/ProtectedRoute";
 import LoginPage from "./pages/Auth/LoginPage";
+import RegisterPage from "./pages/Auth/RegisterPage";
 import POSPage from "./pages/POS/POSPage";
 import DashboardPage from "./pages/Dashboard/DashboardPage";
 import MasterBarang from "./pages/Inventory/MasterBarang";
@@ -16,6 +17,7 @@ function App() {
       <Routes>
         {/* Rute Publik */}
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
 
         {/* Rute yang dilindungi (Harus Login) */}
         <Route element={<ProtectedRoute allowedRoles={["admin", "kasir"]} />}>
