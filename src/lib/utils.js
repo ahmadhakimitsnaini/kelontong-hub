@@ -199,3 +199,50 @@ export const formatRibuan = (angka) => {
   if (!cleaned) return '';
   return new Intl.NumberFormat('id-ID').format(Number(cleaned));
 }
+
+// ── Utilitas Tarif Malam (Night Pricing) ────────────────────────────────────
+
+/**
+ * Mengecek apakah jam saat ini berada di dalam rentang jam malam.
+ * Menangani kasus melintasi tengah malam (misal 22:00 - 06:00).
+ * @param {string} startTimeStr - Format "HH:mm" (contoh: "22:00")
+ * @param {string} endTimeStr - Format "HH:mm" (contoh: "06:00")
+ * @returns {boolean}
+ */
+export const checkIsNightTime = (startTimeStr, endTimeStr) => {
+  if (!startTimeStr || !endTimeStr) return false;
+
+  const now = new Date();
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  const currentMinutesTotal = currentHour * 60 + currentMinute;
+
+  const [startH, startM] = startTimeStr.split(':').map(Number);
+  const [endH, endM] = endTimeStr.split(':').map(Number);
+
+  const startMinutesTotal = startH * 60 + startM;
+  const endMinutesTotal = endH * 60 + endM;
+
+  if (startMinutesTotal <= endMinutesTotal) {
+    // Rentang di hari yang sama (misal 01:00 - 05:00)
+    return currentMinutesTotal >= startMinutesTotal && currentMinutesTotal <= endMinutesTotal;
+  } else {
+    // Rentang melintasi hari (misal 22:00 - 06:00)
+    return currentMinutesTotal >= startMinutesTotal || currentMinutesTotal <= endMinutesTotal;
+  }
+}
+
+/**
+ * Mengambil harga yang aktif dari sebuah produk.
+ * @param {object} product - Data produk (mengandung harga_jual dan harga_malam)
+ * @param {boolean} isNightActive - Status apakah jam malam sedang aktif global & saat ini
+ * @returns {number} Harga efektif yang harus dibayar
+ */
+export const getEffectivePrice = (product, isNightActive) => {
+  if (!product) return 0;
+  
+  if (isNightActive && product.harga_malam != null && product.harga_malam > 0) {
+    return product.harga_malam;
+  }
+  return product.harga_jual;
+}

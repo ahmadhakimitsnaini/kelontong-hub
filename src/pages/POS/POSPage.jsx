@@ -1,11 +1,12 @@
-import React, { useState } from 'react'
-import { Search, Plus, Minus, Trash2, ShoppingBag, X, CheckCircle, CreditCard, Banknote, Wallet } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Search, Plus, Minus, Trash2, ShoppingBag, X, CheckCircle, CreditCard, Banknote, Wallet, Moon } from 'lucide-react'
 import useCartStore from '../../store/useCartStore'
-import { formatRupiah, formatRibuan } from '../../lib/utils'
+import { formatRupiah, formatRibuan, checkIsNightTime, getEffectivePrice } from '../../lib/utils'
 import db from '../../db/db'
 import useNotificationStore from '../../store/useNotificationStore'
 import useHardwareScanner from '../../hooks/useHardwareScanner'
 import { playSuccessBeep, playErrorBeep } from '../../lib/audioUtils'
+import useSettingsStore from '../../store/useSettingsStore'
 
 import { useLiveQuery } from 'dexie-react-hooks'
 
@@ -29,6 +30,16 @@ const POSPage = () => {
   const [paymentMethod, setPaymentMethod] = useState('Tunai')
   const [amountPaid, setAmountPaid] = useState('')
 
+  // Night Pricing Settings
+  const { isNightPricingActive, nightStartTime, nightEndTime, fetchSettings } = useSettingsStore();
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
+
+  // Evaluasi jam secara real-time saat render
+  const isNightTimeNow = isNightPricingActive && checkIsNightTime(nightStartTime, nightEndTime);
+
   // ==========================================
   // HARDWARE SCANNER INTEGRATION
   // ==========================================
@@ -36,7 +47,11 @@ const POSPage = () => {
     try {
       const product = await db.products.where('barcode').equals(barcode).first();
       if (product) {
-        addItem(product);
+        const storeState = useSettingsStore.getState();
+        const scanNightTime = storeState.isNightPricingActive && checkIsNightTime(storeState.nightStartTime, storeState.nightEndTime);
+        const effectivePrice = getEffectivePrice(product, scanNightTime);
+        
+        addItem(product, effectivePrice);
         playSuccessBeep();
         // Optional: Tampilkan notifikasi pendek
         useNotificationStore.getState().showAlert(`+1 ${product.nama}`, "success");
@@ -172,29 +187,39 @@ const POSPage = () => {
         {/* Grid Produk */}
         <div className="flex-1 overflow-y-auto p-4">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 pb-24 lg:pb-4">
-            {filteredProducts.map(product => (
+            {filteredProducts.map(product => {
+              const effectivePrice = getEffectivePrice(product, isNightTimeNow);
+              const isNightPriced = isNightTimeNow && product.harga_malam != null && product.harga_malam > 0;
+              
+              return (
               <button
                 key={product.id}
-                onClick={() => addItem(product)}
+                onClick={() => addItem(product, effectivePrice)}
                 className="group flex flex-col bg-surface rounded-2xl p-4 text-left border border-gray-100 shadow-sm hover:shadow-md hover:border-primary-200 transition-all active:scale-95 relative overflow-hidden"
               >
                 {/* Indikator Stok */}
                 <div className={`absolute top-0 left-0 w-full h-1 ${(product.stok || 0) <= 5 ? 'bg-red-400' : 'bg-green-400'}`} />
                 
-                <h3 className="font-semibold text-gray-800 leading-tight mb-1 line-clamp-2 mt-1">
+                {isNightPriced && (
+                  <div className="absolute top-2 right-2 bg-indigo-100 text-indigo-700 p-1.5 rounded-full shadow-sm" title="Tarif Malam Aktif">
+                    <Moon className="w-3.5 h-3.5" />
+                  </div>
+                )}
+                
+                <h3 className="font-semibold text-gray-800 leading-tight mb-1 line-clamp-2 mt-1 pr-6">
                   {product.nama}
                 </h3>
                 <p className="text-xs text-gray-500 mb-4">{product.kategori} • Stok: {product.stok || 0}</p>
                 <div className="mt-auto pt-2 flex items-center justify-between w-full">
-                  <span className="font-bold text-primary-600 text-lg">
-                    {formatRupiah(product.harga_jual)}
+                  <span className={`font-bold text-lg ${isNightPriced ? 'text-indigo-600' : 'text-primary-600'}`}>
+                    {formatRupiah(effectivePrice)}
                   </span>
                   <div className="w-8 h-8 rounded-full bg-primary-50 flex items-center justify-center text-primary-600 group-hover:bg-primary-500 group-hover:text-white transition-colors">
                     <Plus className="w-5 h-5" />
                   </div>
                 </div>
               </button>
-            ))}
+            )})}
           </div>
         </div>
 

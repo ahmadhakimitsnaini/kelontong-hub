@@ -48,10 +48,12 @@ export const useCartStore = create((set, get) => ({
    * Menambahkan produk ke keranjang.
    * Jika produk sudah ada, quantity-nya akan bertambah.
    * @param {object} product - Objek produk dari tabel products
+   * @param {number|null} overridePrice - Harga kustom (misalnya harga malam)
    */
-  addItem: (product) => {
+  addItem: (product, overridePrice = null) => {
     set((state) => {
       const existingItem = state.items.find((item) => item.id === product.id)
+      const priceToUse = overridePrice !== null ? overridePrice : product.harga_jual;
 
       if (existingItem) {
         // Produk sudah ada → tambah quantity
@@ -75,10 +77,10 @@ export const useCartStore = create((set, get) => ({
           {
             id: product.id,
             nama: product.nama,
-            harga_jual: product.harga_jual,
+            harga_jual: priceToUse,
             harga_beli: product.harga_beli,
             quantity: 1,
-            subtotal: product.harga_jual,
+            subtotal: priceToUse,
           },
         ],
       }

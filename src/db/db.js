@@ -101,9 +101,23 @@ db.version(7).stores({
   inbound_logs: '++id, timestamp, kasir_nama, status, synced'
 });
 
+// ── VERSI 8: Pengaturan (Settings) untuk Jam Malam ───────────────────────────
+db.version(8).stores({
+  products: '++id, kategori, expiry_date, nama, barcode, stok',
+  transactions: '++id, shift_id, timestamp, synced',
+  shifts: '++id, user_id, start_time, end_time, synced',
+  expenses: '++id, shift_id, timestamp, synced',
+  journal_entries: '++id, timestamp, account_name, type, reference_id, reference_type',
+  debts: '++id, supplier_name, due_date, status, created_at',
+  receivables: '++id, customer_name, status, last_updated',
+  cash_reconciliation: '++id, timestamp, shift_id',
+  inbound_logs: '++id, timestamp, kasir_nama, status, synced',
+  settings: 'key, synced'
+});
+
 // ── HOOKS ────────────────────────────────────────────────────────────────────
 // Daftar semua tabel yang akan disinkronkan ke Cloud
-const syncableTables = ['products', 'transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation', 'inbound_logs'];
+const syncableTables = ['products', 'transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation', 'inbound_logs', 'settings'];
 
 const generateUUID = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {

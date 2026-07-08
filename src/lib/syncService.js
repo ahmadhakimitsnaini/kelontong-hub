@@ -1,7 +1,7 @@
 import db from '../db/db'
 import { supabase } from './supabase'
 
-const syncableTables = ['products', 'transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation', 'inbound_logs'];
+const syncableTables = ['products', 'transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation', 'inbound_logs', 'settings'];
 
 /**
  * Mensinkronisasi semua data yang tertunda ke Supabase.
@@ -38,9 +38,10 @@ export const syncAllPendingData = async () => {
       // Gunakan UPSERT: 
       // Jika ID sudah ada di awan, timpa datanya (Update). 
       // Jika ID belum ada, tambahkan baru (Insert).
+      const primaryKey = tableName === 'settings' ? 'key' : 'id';
       const { error } = await supabase
         .from(tableName)
-        .upsert(payload, { onConflict: 'id' });
+        .upsert(payload, { onConflict: primaryKey });
 
       if (error) {
         console.error(`[Sync] Error saat insert ke Supabase tabel ${tableName}:`, error.message || error);
@@ -48,7 +49,7 @@ export const syncAllPendingData = async () => {
       }
 
       // Jika berhasil di-cloud, update status lokal
-      const idsToUpdate = unsyncedRecords.map(r => r.id);
+      const idsToUpdate = unsyncedRecords.map(r => tableName === 'settings' ? r.key : r.id);
       await db.transaction('rw', db[tableName], async () => {
         for (const localId of idsToUpdate) {
           await db[tableName].update(localId, { synced: 1 });
@@ -161,7 +162,8 @@ export const subscribeToRealtime = () => {
                 await db[table].put({ ...newRecord, synced: 1 });
               } else if (eventType === 'DELETE') {
                 // Hapus dari IndexedDB lokal
-                await db[table].delete(oldRecord.id);
+                const pk = table === 'settings' ? oldRecord.key : oldRecord.id;
+                await db[table].delete(pk);
               }
             });
             // Beri tahu UI bahwa ada data baru agar di-render ulang

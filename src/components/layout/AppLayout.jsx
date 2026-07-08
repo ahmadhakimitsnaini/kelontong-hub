@@ -17,7 +17,8 @@ import {
   ScanLine,
   Boxes,
   ChevronDown,
-  X
+  X,
+  Settings
 } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import db from "../../db/db";
@@ -147,6 +148,7 @@ const AppLayout = () => {
     { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
     { name: "Shift", path: "/shift", icon: Clock },
     { name: "Pembukuan", path: "/pembukuan", icon: BookOpen },
+    { name: "Pengaturan", path: "/settings/night-pricing", icon: Settings },
   ];
 
   // Filter Menu: Jika Kasir, hilangkan menu dan sub-menu khusus Admin
@@ -159,7 +161,7 @@ const AppLayout = () => {
     }
     return item;
   }).filter((item) => {
-    if (isKasir() && (item.name === "Dashboard" || item.name === "Pembukuan")) {
+    if (isKasir() && (item.name === "Dashboard" || item.name === "Pembukuan" || item.name === "Pengaturan")) {
       return false;
     }
     return true;
