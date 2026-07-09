@@ -186,7 +186,7 @@ const POSPage = () => {
 
         {/* Grid Produk */}
         <div className="flex-1 overflow-y-auto p-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 pb-24 lg:pb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2 sm:gap-3 pb-24 lg:pb-4">
             {filteredProducts.map(product => {
               const effectivePrice = getEffectivePrice(product, isNightTimeNow);
               const isNightPriced = isNightTimeNow && product.harga_malam != null && product.harga_malam > 0;
@@ -195,27 +195,33 @@ const POSPage = () => {
               <button
                 key={product.id}
                 onClick={() => addItem(product, effectivePrice)}
-                className="group flex flex-col bg-surface rounded-2xl p-4 text-left border border-gray-100 shadow-sm hover:shadow-md hover:border-primary-200 transition-all active:scale-95 relative overflow-hidden"
+                className="group flex flex-row sm:flex-col items-center sm:items-start bg-surface rounded-xl p-2.5 sm:p-3 text-left border border-gray-100 shadow-sm hover:shadow-md hover:border-primary-200 transition-all active:scale-[0.98] sm:active:scale-95 relative overflow-hidden"
               >
-                {/* Indikator Stok */}
-                <div className={`absolute top-0 left-0 w-full h-1 ${(product.stok || 0) <= 5 ? 'bg-red-400' : 'bg-green-400'}`} />
+                {/* Indikator Stok: Garis Kiri di Mobile, Garis Atas di Desktop */}
+                <div className={`absolute top-0 left-0 w-1 h-full sm:w-full sm:h-1 ${(product.stok || 0) <= 5 ? 'bg-red-400' : 'bg-green-400'}`} />
                 
-                {isNightPriced && (
-                  <div className="absolute top-2 right-2 bg-indigo-100 text-indigo-700 p-1.5 rounded-full shadow-sm" title="Tarif Malam Aktif">
-                    <Moon className="w-3.5 h-3.5" />
+                {/* Wrapper Teks (Kiri di Mobile, Atas di Desktop) */}
+                <div className="flex-1 min-w-0 pl-1.5 sm:pl-0 pr-2 sm:pr-0">
+                  <div className="flex items-start justify-between gap-1.5">
+                    <h3 className="text-[13px] sm:text-sm font-semibold text-gray-800 leading-snug mb-0.5 line-clamp-2 sm:mt-1">
+                      {product.nama}
+                    </h3>
+                    {isNightPriced && (
+                      <div className="shrink-0 bg-indigo-100 text-indigo-700 p-1 rounded-full shadow-sm sm:absolute sm:top-1.5 sm:right-1.5" title="Tarif Malam Aktif">
+                        <Moon className="w-3 h-3" />
+                      </div>
+                    )}
                   </div>
-                )}
+                  <p className="text-[10px] sm:text-xs text-gray-500 sm:mb-3">{product.kategori} • Stok: {product.stok || 0}</p>
+                </div>
                 
-                <h3 className="font-semibold text-gray-800 leading-tight mb-1 line-clamp-2 mt-1 pr-6">
-                  {product.nama}
-                </h3>
-                <p className="text-xs text-gray-500 mb-4">{product.kategori} • Stok: {product.stok || 0}</p>
-                <div className="mt-auto pt-2 flex items-center justify-between w-full">
-                  <span className={`font-bold text-lg ${isNightPriced ? 'text-indigo-600' : 'text-primary-600'}`}>
+                {/* Wrapper Harga & Aksi (Kanan di Mobile, Bawah di Desktop) */}
+                <div className="flex flex-col sm:flex-row items-end sm:items-center sm:justify-between sm:w-full sm:mt-auto sm:pt-1.5 gap-1 sm:gap-0 shrink-0">
+                  <span className={`font-bold text-[13px] sm:text-base whitespace-nowrap ${isNightPriced ? 'text-indigo-600' : 'text-primary-600'}`}>
                     {formatRupiah(effectivePrice)}
                   </span>
-                  <div className="w-8 h-8 rounded-full bg-primary-50 flex items-center justify-center text-primary-600 group-hover:bg-primary-500 group-hover:text-white transition-colors">
-                    <Plus className="w-5 h-5" />
+                  <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-primary-50 flex items-center justify-center text-primary-600 group-hover:bg-primary-500 group-hover:text-white transition-colors">
+                    <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   </div>
                 </div>
               </button>
