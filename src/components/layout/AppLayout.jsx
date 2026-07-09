@@ -25,11 +25,8 @@ import db from "../../db/db";
 import { syncAllPendingData, getPendingSyncCount } from "../../lib/syncService";
 import GlobalNotification from "./GlobalNotification";
 import useAuthStore from "../../store/useAuthStore";
-import SmartScannerModal from "../scanner/SmartScannerModal";
-import useScannerStore from "../../store/useScannerStore";
 
 const AppLayout = () => {
-  const { openScanner } = useScannerStore();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const location = useLocation();
   const navigate = useNavigate();
@@ -171,9 +168,6 @@ const AppLayout = () => {
     <div className="flex h-screen bg-background text-gray-800 font-sans overflow-hidden">
       <GlobalNotification />
 
-      {/* ── SMART SCANNER MODAL (Global, tersedia di semua halaman) ─── */}
-      <SmartScannerModal />
-
       {/* ── SIDEBAR (Tablet / Desktop) ───────────────────────────────────────── */}
       <aside className="hidden md:flex flex-col w-24 lg:w-64 bg-surface border-r border-gray-100 shadow-sm z-20 print:hidden">
         <div className="p-4 flex items-center justify-center lg:justify-start h-16 border-b border-gray-50">
@@ -263,15 +257,6 @@ const AppLayout = () => {
             );
           })}
 
-          {/* Tombol Scan di Sidebar Desktop */}
-          <button
-            id="sidebar-scan-btn"
-            onClick={openScanner}
-            className="flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-200 group bg-primary-500 hover:bg-primary-600 text-white mt-2 shadow-lg shadow-primary-500/30 active:scale-95"
-          >
-            <ScanLine className="w-6 h-6 transition-transform group-hover:scale-110" />
-            <span className="hidden lg:block font-semibold">Scan Barang</span>
-          </button>
         </nav>
 
         {/* Profil User & Logout (Sidebar Bottom) */}
@@ -428,22 +413,6 @@ const AppLayout = () => {
           return (
             <>
               {leftItems.map(renderNavItem)}
-
-              {/* ── Tombol Scan FAB (Floating Action Button) ── */}
-              <button
-                id="mobile-scan-fab"
-                onClick={openScanner}
-                className="relative flex flex-col items-center justify-center w-full h-full gap-1 group"
-              >
-                {/* FAB Circle */}
-                <div className="-mt-6 w-14 h-14 rounded-full bg-primary-500 flex items-center justify-center shadow-xl shadow-primary-500/40 border-4 border-white transition-all group-active:scale-90 group-hover:bg-primary-600">
-                  <ScanLine className="w-6 h-6 text-white" />
-                </div>
-                <span className="text-[10px] font-medium text-primary-600">
-                  Scan
-                </span>
-              </button>
-
               {rightItems.map(renderNavItem)}
             </>
           );
