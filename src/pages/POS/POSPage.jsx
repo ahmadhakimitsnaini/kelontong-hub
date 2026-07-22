@@ -7,6 +7,7 @@ import useNotificationStore from '../../store/useNotificationStore'
 import useHardwareScanner from '../../hooks/useHardwareScanner'
 import { playSuccessBeep, playErrorBeep } from '../../lib/audioUtils'
 import useSettingsStore from '../../store/useSettingsStore'
+import ReceiptModal from '../../components/ui/ReceiptModal'
 
 import { useLiveQuery } from 'dexie-react-hooks'
 
@@ -29,6 +30,9 @@ const POSPage = () => {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState('Tunai')
   const [amountPaid, setAmountPaid] = useState('')
+
+  // Receipt Modal State
+  const [receiptData, setReceiptData] = useState(null)
 
   // Night Pricing Settings
   const { isNightPricingActive, nightStartTime, nightEndTime, fetchSettings } = useSettingsStore();
@@ -104,6 +108,7 @@ const POSPage = () => {
 
     try {
       const kembalian = paymentMethod === 'Tunai' ? paid - totalHarga : 0;
+      const txTimestamp = new Date().getTime();
 
       // ATOMIC TRANSACTION: Pastikan simpan nota dan potong stok terjadi bersamaan (anti-bocor)
       await db.transaction('rw', [db.transactions, db.products], async () => {
@@ -114,7 +119,7 @@ const POSPage = () => {
           payment_method: paymentMethod,
           amount_paid: paymentMethod === 'Tunai' ? paid : totalHarga,
           kembalian: kembalian,
-          timestamp: new Date().getTime()
+          timestamp: txTimestamp,
         })
 
         // 2. Kurangi Stok Barang di Database
@@ -130,18 +135,34 @@ const POSPage = () => {
         }
       })
 
-      const msgKembalian = paymentMethod === 'Tunai' && kembalian > 0 ? `\nKembalian: ${formatRupiah(kembalian)}` : '';
-      useNotificationStore.getState().showAlert(`Pembayaran berhasil! Total: ${formatRupiah(totalHarga)}${msgKembalian}`, "success")
-      
-      clearCart()
-      setIsMobileCartOpen(false)
+      // Tutup modal pembayaran & tampilkan struk
       setIsPaymentModalOpen(false)
+      setIsMobileCartOpen(false)
+
+      // Simpan data untuk ditampilkan di ReceiptModal
+      setReceiptData({
+        items: [...cartItems],
+        total: totalHarga,
+        kembalian,
+        paymentMethod,
+        amountPaid: paymentMethod === 'Tunai' ? paid : totalHarga,
+        timestamp: txTimestamp,
+      })
+
+      // Reset form pembayaran
       setAmountPaid('')
       setPaymentMethod('Tunai')
+
     } catch (error) {
       console.error("Gagal melakukan transaksi:", error)
       useNotificationStore.getState().showAlert("Terjadi kesalahan saat memproses pembayaran.", "error")
     }
+  }
+
+  // Handler penutupan struk — baru clearCart di sini
+  const handleCloseReceipt = () => {
+    setReceiptData(null)
+    clearCart()
   }
 
   return (
@@ -440,6 +461,13 @@ const POSPage = () => {
           </div>
         </div>
       )}
+
+      {/* ── STRUK PEMBAYARAN (On-Screen Receipt Modal) ───────────────────── */}
+      <ReceiptModal
+        isOpen={!!receiptData}
+        onClose={handleCloseReceipt}
+        receiptData={receiptData}
+      />
 
       {/* ── TOMBOL FLOAT MOBILE (Membuka Keranjang) ──────────────────────── */}
       {!isMobileCartOpen && (
