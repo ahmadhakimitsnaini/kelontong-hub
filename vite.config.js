@@ -3,11 +3,16 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({command}) => ({
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // ⛔ Nonaktifkan service worker saat development
+      // agar tidak memblokir HMR dan Fast Refresh
+      devOptions: {
+        enabled: false,
+      },
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
         name: 'MaduraDigital Dashboard',
@@ -28,5 +33,5 @@ export default defineConfig({
     // Naikkan batas peringatan ke 1MB agar build tidak terganggu warning
     chunkSizeWarningLimit: 1000
   }
-})
+}))
 
