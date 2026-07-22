@@ -115,6 +115,21 @@ db.version(8).stores({
   settings: 'key, synced'
 });
 
+// ── VERSI 9: Tabel untuk menyimpan ID yang dihapus agar tersinkronisasi ─────
+db.version(9).stores({
+  products: '++id, kategori, expiry_date, nama, barcode, stok',
+  transactions: '++id, shift_id, timestamp, synced',
+  shifts: '++id, user_id, start_time, end_time, synced',
+  expenses: '++id, shift_id, timestamp, synced',
+  journal_entries: '++id, timestamp, account_name, type, reference_id, reference_type',
+  debts: '++id, supplier_name, due_date, status, created_at',
+  receivables: '++id, customer_name, status, last_updated',
+  cash_reconciliation: '++id, timestamp, shift_id',
+  inbound_logs: '++id, timestamp, kasir_nama, status, synced',
+  settings: 'key, synced',
+  pending_deletions: '++id, tableName, recordId'
+});
+
 // ── HOOKS ────────────────────────────────────────────────────────────────────
 // Daftar semua tabel yang akan disinkronkan ke Cloud
 const syncableTables = ['products', 'transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation', 'inbound_logs', 'settings'];
@@ -155,5 +170,13 @@ syncableTables.forEach(tableName => {
     }
   });
 });
+
+export const deleteAndSync = async (tableName, id) => {
+  await db[tableName].delete(id);
+  if (db.pending_deletions) {
+    await db.pending_deletions.add({ tableName, recordId: id });
+    setTimeout(() => window.dispatchEvent(new Event('idbWrite')), 0);
+  }
+};
 
 export default db

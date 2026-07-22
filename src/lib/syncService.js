@@ -14,6 +14,29 @@ export const syncAllPendingData = async () => {
 
   let totalSynced = 0;
 
+  // 1. PROSES PENDING DELETIONS
+  if (db.pending_deletions) {
+    try {
+      const deletions = await db.pending_deletions.toArray();
+      if (deletions.length > 0) {
+        console.log(`[Sync] Menemukan ${deletions.length} data untuk dihapus di cloud`);
+        for (const del of deletions) {
+          const pk = del.tableName === 'settings' ? 'key' : 'id';
+          const { error } = await supabase.from(del.tableName).delete().eq(pk, del.recordId);
+          if (error) {
+            console.error(`[Sync] Error hapus ${del.recordId} di tabel ${del.tableName}:`, error);
+          } else {
+            await db.pending_deletions.delete(del.id);
+            totalSynced++;
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`[Sync] Error proses pending_deletions:`, err);
+    }
+  }
+
+  // 2. PROSES PENDING UPSERTS
   for (const tableName of syncableTables) {
     try {
       if (!db[tableName]) continue;

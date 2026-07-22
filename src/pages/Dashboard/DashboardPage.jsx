@@ -9,10 +9,10 @@ import {
   Trash2,
   CalendarDays,
   Download,
-  Printer
+  Printer,
 } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
-import db from "../../db/db";
+import db, { deleteAndSync } from "../../db/db";
 import {
   formatRupiah,
   formatTanggal,
@@ -20,7 +20,11 @@ import {
   getTimeRangeBounds,
   formatWaktu,
 } from "../../lib/utils";
-import { exportToCSV, formatTransactionsForExport, formatExpensesForExport } from "../../lib/exportUtils";
+import {
+  exportToCSV,
+  formatTransactionsForExport,
+  formatExpensesForExport,
+} from "../../lib/exportUtils";
 import useNotificationStore from "../../store/useNotificationStore";
 
 // ── HELPER: LABEL DESKRIPSI DINAMIS ─────────────────────────────────────────
@@ -148,33 +152,52 @@ const DashboardPage = () => {
         timestamp: new Date().getTime(),
       });
       setExpenseForm({ description: "", amount: "" });
-      useNotificationStore.getState().showAlert("Pengeluaran berhasil dicatat", "success");
+      useNotificationStore
+        .getState()
+        .showAlert("Pengeluaran berhasil dicatat", "success");
     } catch (error) {
       console.error("Gagal mencatat pengeluaran:", error);
-      useNotificationStore.getState().showAlert("Terjadi kesalahan saat mencatat pengeluaran.", "error");
+      useNotificationStore
+        .getState()
+        .showAlert("Terjadi kesalahan saat mencatat pengeluaran.", "error");
     }
   };
 
   const handleDeleteExpense = async (id) => {
-    useNotificationStore.getState().showConfirm("Yakin ingin menghapus catatan pengeluaran ini?", async () => {
-      await db.expenses.delete(id);
-      useNotificationStore.getState().showAlert("Pengeluaran berhasil dihapus.", "success");
-    });
+    useNotificationStore
+      .getState()
+      .showConfirm(
+        "Yakin ingin menghapus catatan pengeluaran ini?",
+        async () => {
+          await deleteAndSync("expenses", id);
+          useNotificationStore
+            .getState()
+            .showAlert("Pengeluaran berhasil dihapus.", "success");
+        },
+      );
   };
 
   // ── 6. FUNGSI EXPORT & CETAK ──────────────────────────────────────────────
   const handleExportCSV = () => {
     let exported = false;
     if (transactions && transactions.length > 0) {
-      exportToCSV(formatTransactionsForExport(transactions), "Laporan_Transaksi_Warung");
+      exportToCSV(
+        formatTransactionsForExport(transactions),
+        "Laporan_Transaksi_Warung",
+      );
       exported = true;
     }
     if (expenses && expenses.length > 0) {
-      exportToCSV(formatExpensesForExport(expenses), "Laporan_Pengeluaran_Warung");
+      exportToCSV(
+        formatExpensesForExport(expenses),
+        "Laporan_Pengeluaran_Warung",
+      );
       exported = true;
     }
     if (!exported) {
-      useNotificationStore.getState().showAlert("Tidak ada data untuk diexport pada periode ini.", "error");
+      useNotificationStore
+        .getState()
+        .showAlert("Tidak ada data untuk diexport pada periode ini.", "error");
     }
   };
 
@@ -242,19 +265,21 @@ const DashboardPage = () => {
 
           {/* Tombol Export */}
           <div className="flex items-center gap-2 ml-2">
-            <button 
+            <button
               onClick={handleExportCSV}
               className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300 text-gray-700 text-sm font-medium rounded-xl shadow-sm transition-all"
               title="Unduh CSV"
             >
-              <Download className="w-4 h-4" /> <span className="hidden sm:inline">CSV</span>
+              <Download className="w-4 h-4" />{" "}
+              <span className="hidden sm:inline">CSV</span>
             </button>
-            <button 
+            <button
               onClick={handlePrintPDF}
               className="flex items-center gap-2 px-3 py-2 bg-primary-50 text-primary-700 hover:bg-primary-100 border border-primary-100 text-sm font-medium rounded-xl shadow-sm transition-all"
               title="Cetak PDF / Print"
             >
-              <Printer className="w-4 h-4" /> <span className="hidden sm:inline">Cetak</span>
+              <Printer className="w-4 h-4" />{" "}
+              <span className="hidden sm:inline">Cetak</span>
             </button>
           </div>
         </div>

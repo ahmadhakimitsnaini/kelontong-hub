@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Package, Search, Plus, ArrowLeft, Save, Edit, Trash2, Camera } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import db from '../../db/db';
+import db, { deleteAndSync } from '../../db/db';
 import useNotificationStore from '../../store/useNotificationStore';
 import DualImageUploader from './DualImageUploader';
 import useHardwareScanner from '../../hooks/useHardwareScanner';
@@ -115,7 +115,7 @@ const MasterBarang = () => {
   const handleDelete = async (id) => {
     if (window.confirm("Apakah Anda yakin ingin menghapus SKU produk ini?")) {
       try {
-        await db.products.delete(id);
+        await deleteAndSync('products', id);
         showAlert("Produk berhasil dihapus", "success");
       } catch (error) {
         showAlert("Gagal menghapus produk", "error");

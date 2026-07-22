@@ -3,14 +3,15 @@ import {
   TrendingUp, TrendingDown, Wallet, FileText, BookOpen, AlertCircle,
   ChevronDown, CheckCircle, Clock, Plus, Trash2, PhoneCall, Download,
   ArrowUpRight, ArrowDownRight, BarChart3, Scale, Activity, Users, X,
-  CalendarDays, ArrowRight
+  CalendarDays, ArrowRight, Receipt
 } from 'lucide-react'
+import ReceiptModal from '../../components/ui/ReceiptModal'
 import { 
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
   PieChart, Pie, Cell, BarChart, Bar, Legend 
 } from 'recharts'
 import { useLiveQuery } from 'dexie-react-hooks'
-import db from '../../db/db'
+import db, { deleteAndSync } from '../../db/db'
 import { formatRupiah, formatRibuan, formatTanggal, formatTanggalSingkat, TIME_RANGE_OPTIONS, getTimeRangeBounds } from '../../lib/utils'
 import useNotificationStore from '../../store/useNotificationStore'
 
@@ -583,7 +584,7 @@ const TabHutang = ({ debts, refetch }) => {
 
   const handleDelete = async (id) => {
     useNotificationStore.getState().showConfirm('Yakin ingin menghapus tagihan ini?', async () => {
-      await db.debts.delete(id)
+      await deleteAndSync('debts', id)
       useNotificationStore.getState().showAlert('Tagihan berhasil dihapus', 'success')
     })
   }
@@ -778,7 +779,7 @@ const TabPiutang = ({ receivables }) => {
 
   const handleDelete = async (id) => {
     useNotificationStore.getState().showConfirm('Yakin ingin menghapus data kasbon ini?', async () => {
-      await db.receivables.delete(id)
+      await deleteAndSync('receivables', id)
       useNotificationStore.getState().showAlert('Kasbon berhasil dihapus', 'success')
     })
   }
@@ -1072,15 +1073,106 @@ const TabRekonsiliasi = ({ transactions, reconciliations }) => {
   )
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB: RIWAYAT TRANSAKSI (dengan Cetak Ulang Struk)
+// ─────────────────────────────────────────────────────────────────────────────
+const TabRiwayatTransaksi = ({ transactions }) => {
+  const [receiptData, setReceiptData] = useState(null)
+
+  const handleLihatStruk = (trx) => {
+    setReceiptData({
+      items: trx.items || [],
+      total: trx.total,
+      kembalian: trx.kembalian || 0,
+      paymentMethod: trx.payment_method || 'Tunai',
+      amountPaid: trx.amount_paid || trx.total,
+      timestamp: trx.timestamp,
+    })
+  }
+
+  const txList = (transactions || []).slice(0, 100)
+
+  return (
+    <>
+      <ReceiptModal
+        isOpen={!!receiptData}
+        onClose={() => setReceiptData(null)}
+        receiptData={receiptData}
+      />
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+          <div>
+            <h3 className="font-bold text-gray-800">Riwayat Transaksi</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Klik "Lihat Struk" untuk melihat & mengunduh struk lama</p>
+          </div>
+          <span className="text-xs text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full font-medium">{txList.length} transaksi</span>
+        </div>
+
+        {txList.length === 0 ? (
+          <div className="py-16 text-center text-gray-400">
+            <Receipt className="w-12 h-12 mx-auto opacity-20 mb-3" />
+            <p>Belum ada transaksi pada periode ini.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {txList.map((trx, idx) => {
+              const txDate = new Date(trx.timestamp)
+              const tanggal = txDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+              const waktu = txDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+              const isQRIS = trx.payment_method === 'QRIS'
+              return (
+                <div key={trx.id ?? idx} className="px-5 py-4 hover:bg-gray-50/50 transition-colors">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                          isQRIS ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'
+                        }`}>
+                          {trx.payment_method || 'Tunai'}
+                        </span>
+                        <span className="text-xs text-gray-400">{tanggal} • {waktu}</span>
+                      </div>
+                      <p className="text-sm text-gray-500 truncate">
+                        {(trx.items || []).map(i => i.nama).join(', ') || 'Tidak ada detail item'}
+                      </p>
+                      {trx.kembalian > 0 && (
+                        <p className="text-xs text-gray-400 mt-0.5">Kembalian: {formatRupiah(trx.kembalian)}</p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      <span className="font-bold text-gray-800 text-base">{formatRupiah(trx.total)}</span>
+                      <button
+                        onClick={() => handleLihatStruk(trx)}
+                        className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        <Receipt className="w-3.5 h-3.5" />
+                        Lihat Struk
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // KOMPONEN UTAMA: PEMBUKUAN PAGE
 // ─────────────────────────────────────────────────────────────────────────────
 const TABS = [
+
   { id: 'laba-rugi', label: 'Laba Rugi', icon: TrendingUp },
   { id: 'neraca', label: 'Neraca', icon: Scale },
   { id: 'buku-besar', label: 'Buku Besar', icon: BookOpen },
   { id: 'hutang', label: 'Hutang', icon: AlertCircle },
   { id: 'piutang', label: 'Kasbon', icon: Users },
+  { id: 'riwayat', label: 'Riwayat', icon: Receipt },
   { id: 'rekonsiliasi', label: 'Tutup Kasir', icon: Activity },
 ]
 
@@ -1196,6 +1288,9 @@ const PembukuanPage = () => {
         )}
         {activeTab === 'piutang' && (
           <TabPiutang receivables={receivables} />
+        )}
+        {activeTab === 'riwayat' && (
+          <TabRiwayatTransaksi transactions={transactions} />
         )}
         {activeTab === 'rekonsiliasi' && (
           <TabRekonsiliasi transactions={allTransactions} reconciliations={reconciliations} />
