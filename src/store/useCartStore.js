@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import useNotificationStore from './useNotificationStore'
 
 /**
  * MaduraDigital - Cart State Management (Zustand)
@@ -14,6 +15,7 @@ import { create } from 'zustand'
  *   harga_beli  : number   - Harga beli/modal satuan (untuk kalkulasi laba)
  *   quantity    : number   - Jumlah yang dibeli
  *   subtotal    : number   - harga_jual * quantity
+ *   stok        : number   - Sisa stok barang
  * }
  */
 export const useCartStore = create((set, get) => ({
@@ -49,13 +51,25 @@ export const useCartStore = create((set, get) => ({
    * Jika produk sudah ada, quantity-nya akan bertambah.
    * @param {object} product - Objek produk dari tabel products
    * @param {number|null} overridePrice - Harga kustom (misalnya harga malam)
+   * @returns {boolean} - true jika berhasil ditambah, false jika gagal (stok habis)
    */
   addItem: (product, overridePrice = null) => {
+    let added = false
     set((state) => {
       const existingItem = state.items.find((item) => item.id === product.id)
       const priceToUse = overridePrice !== null ? overridePrice : product.harga_jual;
+      
+      // Ambil stok: jika product adalah item dari database, ada product.stok
+      // Jika product adalah item yang dilempar balik dari keranjang, ada product.stok juga (karena kita simpan)
+      const maxStok = product.stok || 0;
 
       if (existingItem) {
+        if (existingItem.quantity >= maxStok) {
+          useNotificationStore.getState().showAlert(`Stok ${product.nama} tidak mencukupi (sisa ${maxStok})!`, 'error');
+          return state; // Batalkan penambahan
+        }
+        
+        added = true;
         // Produk sudah ada → tambah quantity
         return {
           items: state.items.map((item) =>
@@ -70,6 +84,12 @@ export const useCartStore = create((set, get) => ({
         }
       }
 
+      if (maxStok <= 0) {
+        useNotificationStore.getState().showAlert(`Stok ${product.nama} habis!`, 'error');
+        return state;
+      }
+
+      added = true;
       // Produk baru → tambahkan ke keranjang
       return {
         items: [
@@ -79,12 +99,14 @@ export const useCartStore = create((set, get) => ({
             nama: product.nama,
             harga_jual: priceToUse,
             harga_beli: product.harga_beli,
+            stok: maxStok,
             quantity: 1,
             subtotal: priceToUse,
           },
         ],
       }
     })
+    return added;
   },
 
   /**

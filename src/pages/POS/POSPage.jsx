@@ -55,10 +55,14 @@ const POSPage = () => {
         const scanNightTime = storeState.isNightPricingActive && checkIsNightTime(storeState.nightStartTime, storeState.nightEndTime);
         const effectivePrice = getEffectivePrice(product, scanNightTime);
         
-        addItem(product, effectivePrice);
-        playSuccessBeep();
-        // Optional: Tampilkan notifikasi pendek
-        useNotificationStore.getState().showAlert(`+1 ${product.nama}`, "success");
+        const added = addItem(product, effectivePrice);
+        if (added) {
+          playSuccessBeep();
+          // Optional: Tampilkan notifikasi pendek
+          useNotificationStore.getState().showAlert(`+1 ${product.nama}`, "success");
+        } else {
+          playErrorBeep();
+        }
       } else {
         playErrorBeep();
         useNotificationStore.getState().showAlert(`Barcode ${barcode} tidak ditemukan!`, "error");
@@ -211,12 +215,16 @@ const POSPage = () => {
             {filteredProducts.map(product => {
               const effectivePrice = getEffectivePrice(product, isNightTimeNow);
               const isNightPriced = isNightTimeNow && product.harga_malam != null && product.harga_malam > 0;
+              const isOutOfStock = (product.stok || 0) <= 0;
               
               return (
               <button
                 key={product.id}
-                onClick={() => addItem(product, effectivePrice)}
-                className="group flex flex-row sm:flex-col items-center sm:items-start bg-surface rounded-xl p-2.5 sm:p-3 text-left border border-gray-100 shadow-sm hover:shadow-md hover:border-primary-200 transition-all active:scale-[0.98] sm:active:scale-95 relative overflow-hidden"
+                onClick={() => {
+                  if (!isOutOfStock) addItem(product, effectivePrice);
+                  else useNotificationStore.getState().showAlert(`Stok ${product.nama} habis!`, "error");
+                }}
+                className={`group flex flex-row sm:flex-col items-center sm:items-start bg-surface rounded-xl p-2.5 sm:p-3 text-left border border-gray-100 shadow-sm hover:shadow-md hover:border-primary-200 transition-all active:scale-[0.98] sm:active:scale-95 relative overflow-hidden ${isOutOfStock ? 'opacity-50' : ''}`}
               >
                 {/* Indikator Stok: Garis Kiri di Mobile, Garis Atas di Desktop */}
                 <div className={`absolute top-0 left-0 w-1 h-full sm:w-full sm:h-1 ${(product.stok || 0) <= 5 ? 'bg-red-400' : 'bg-green-400'}`} />
