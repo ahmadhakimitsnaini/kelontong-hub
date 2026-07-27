@@ -1,7 +1,7 @@
 import db from '../db/db'
 import { supabase } from './supabase'
 
-const syncableTables = ['products', 'transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation', 'inbound_logs', 'settings'];
+const syncableTables = ['products', 'transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation', 'inbound_logs', 'settings', 'suppliers'];
 
 /**
  * Mensinkronisasi semua data yang tertunda ke Supabase.

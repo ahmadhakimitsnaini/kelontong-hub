@@ -130,9 +130,30 @@ db.version(9).stores({
   pending_deletions: '++id, tableName, recordId'
 });
 
+// ── VERSI 10: Master Supplier & Pemetaan Produk per Supplier ─────────────────
+// Penambahan tabel 'suppliers' sebagai master data terpusat pengganti free-text.
+// Index 'supplier_id' ditambahkan pada products, inbound_logs, dan debts
+// agar query filter/group-by per supplier berlangsung secara instan (< 50ms).
+// Catatan: 'debts' mempertahankan index 'supplier_name' untuk backward
+// compatibility dengan data hutang lama yang belum terhubung ke supplier master.
+db.version(10).stores({
+  products: '++id, kategori, expiry_date, nama, barcode, stok, supplier_id',
+  transactions: '++id, shift_id, timestamp, synced',
+  shifts: '++id, user_id, start_time, end_time, synced',
+  expenses: '++id, shift_id, timestamp, synced',
+  journal_entries: '++id, timestamp, account_name, type, reference_id, reference_type',
+  debts: '++id, supplier_id, supplier_name, due_date, status, created_at',
+  receivables: '++id, customer_name, status, last_updated',
+  cash_reconciliation: '++id, timestamp, shift_id',
+  inbound_logs: '++id, timestamp, supplier_id, kasir_nama, status, synced',
+  settings: 'key, synced',
+  pending_deletions: '++id, tableName, recordId',
+  suppliers: '++id, nama_supplier, kontak_phone, synced',
+});
+
 // ── HOOKS ────────────────────────────────────────────────────────────────────
 // Daftar semua tabel yang akan disinkronkan ke Cloud
-const syncableTables = ['products', 'transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation', 'inbound_logs', 'settings'];
+const syncableTables = ['products', 'transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation', 'inbound_logs', 'settings', 'suppliers'];
 
 const generateUUID = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
