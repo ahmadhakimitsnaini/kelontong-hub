@@ -139,6 +139,7 @@ const AppLayout = () => {
       children: [
         { name: "Master Barang", path: "/inventory/master" },
         { name: "Inbound", path: "/inventory/inbound" },
+        { name: "Daftar Supplier", path: "/inventory/suppliers", adminOnly: true },
         { name: "Persetujuan Inbound", path: "/inventory/approval", adminOnly: true, badge: pendingInboundCount > 0 ? pendingInboundCount : null },
       ],
     },
