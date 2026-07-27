@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   PackagePlus,
   Save,
@@ -13,9 +13,13 @@ import {
   CreditCard,
   X,
   CheckCircle,
+  Truck,
+  AlertTriangle,
+  RotateCcw,
+  Trash2,
 } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
-import db from "../../db/db";
+import db, { deleteAndSync } from "../../db/db";
 import useNotificationStore from "../../store/useNotificationStore";
 import useAuthStore from "../../store/useAuthStore";
 import useHardwareScanner from "../../hooks/useHardwareScanner";
@@ -23,24 +27,31 @@ import { playSuccessBeep, playErrorBeep } from "../../lib/audioUtils";
 import { formatRupiah } from "../../lib/utils";
 
 const Inbound = () => {
-  const { showAlert } = useNotificationStore();
-  const { getFullName, isKasir } = useAuthStore();
+  const { showConfirm, showAlert } = useNotificationStore();
+  const { isKasir, getFullName } = useAuthStore();
 
+  // State Tab & Form
   const [activeTab, setActiveTab] = useState("inbound"); // 'inbound' | 'history'
   const [note, setNote] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [pendingUpdates, setPendingUpdates] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Modal Pembayaran/Pendanaan Modal State
+  // State Modal Pembayaran
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isImpactConfirmed, setIsImpactConfirmed] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("Kas Tunai"); // 'Kas Tunai' | 'Hutang'
-  const [supplierName, setSupplierName] = useState("");
+  const [selectedSupplierId, setSelectedSupplierId] = useState(""); // ID dari master supplier
   const [dueDate, setDueDate] = useState("");
   const [inboundSummary, setInboundSummary] = useState({
     totalHpp: 0,
     items: [],
   });
+
+  // Daftar semua supplier dari master (untuk dropdown)
+  const suppliers = useLiveQuery(() => db.suppliers.orderBy('nama_supplier').toArray(), []);
+  // Supplier yang sedang dipilih untuk sesi Inbound ini
+  const [activeInboundSupplierId, setActiveInboundSupplierId] = useState(''); // '' = semua barang
 
   // Data Tab Inbound
   const products = useLiveQuery(
@@ -50,14 +61,21 @@ const Inbound = () => {
 
   const filteredProducts = React.useMemo(() => {
     if (!products) return [];
-    if (!searchQuery) return products;
     const query = searchQuery.toLowerCase();
-    return products.filter(
+    // Smart filter: jika ada supplier aktif dipilih, prioritaskan barang supplier tersebut
+    let baseList = products;
+    if (activeInboundSupplierId) {
+      const supplierItems = products.filter(p => p.supplier_id === activeInboundSupplierId);
+      const otherItems = products.filter(p => p.supplier_id !== activeInboundSupplierId);
+      baseList = [...supplierItems, ...otherItems]; // barang supplier muncul di atas
+    }
+    if (!searchQuery) return baseList;
+    return baseList.filter(
       (p) =>
         p.nama.toLowerCase().includes(query) ||
         (p.barcode && p.barcode.toLowerCase().includes(query)),
     );
-  }, [products, searchQuery]);
+  }, [products, searchQuery, activeInboundSupplierId]);
 
   // Data Tab Riwayat
   const inboundLogs = useLiveQuery(
@@ -82,6 +100,45 @@ const Inbound = () => {
   };
 
   const totalItemsToUpdate = Object.keys(pendingUpdates).length;
+
+  const selectedDraftItems = useMemo(() => {
+    return (products || []).filter(
+      (p) => pendingUpdates[p.id] && pendingUpdates[p.id] > 0,
+    );
+  }, [products, pendingUpdates]);
+
+  const estimatedTotalHpp = useMemo(() => {
+    return selectedDraftItems.reduce(
+      (acc, p) => acc + (p.harga_beli || 0) * (pendingUpdates[p.id] || 0),
+      0,
+    );
+  }, [selectedDraftItems, pendingUpdates]);
+
+  const totalPcsToUpdate = useMemo(() => {
+    return selectedDraftItems.reduce(
+      (acc, p) => acc + (pendingUpdates[p.id] || 0),
+      0,
+    );
+  }, [selectedDraftItems, pendingUpdates]);
+
+  const handleRemoveFromDraft = (productId) => {
+    setPendingUpdates((prev) => {
+      const updated = { ...prev };
+      delete updated[productId];
+      return updated;
+    });
+  };
+
+  const handleClearAllDrafts = () => {
+    if (totalItemsToUpdate === 0) return;
+    showConfirm(
+      "Apakah Anda yakin ingin mengosongkan seluruh daftar barang di draft Inbound ini?",
+      () => {
+        setPendingUpdates({});
+        setNote("");
+      },
+    );
+  };
 
   // ==========================================
   // HARDWARE SCANNER INTEGRATION
@@ -130,13 +187,28 @@ const Inbound = () => {
     }
 
     setInboundSummary({ totalHpp, items: itemsToProcess });
+    setIsImpactConfirmed(false);
     setIsPaymentModalOpen(true);
   };
 
   const handleConfirmInbound = async () => {
-    if (paymentMethod === "Hutang" && (!supplierName.trim() || !dueDate)) {
+    if (!isImpactConfirmed) {
       showAlert(
-        "Nama supplier dan tanggal jatuh tempo wajib diisi untuk pencatatan hutang!",
+        "Anda wajib mencentang kotak konfirmasi dampak transaksi terlebih dahulu!",
+        "error",
+      );
+      return;
+    }
+    if (paymentMethod === "Hutang" && !selectedSupplierId) {
+      showAlert(
+        "Pilih supplier dari daftar untuk pencatatan hutang!",
+        "error",
+      );
+      return;
+    }
+    if (paymentMethod === "Hutang" && !dueDate) {
+      showAlert(
+        "Tanggal jatuh tempo wajib diisi untuk pencatatan hutang!",
         "error",
       );
       return;
@@ -178,13 +250,23 @@ const Inbound = () => {
         items: logItems,
         status: isAdmin ? "APPROVED" : "PENDING",
         synced: 0,
+        expense_id: null,
+        debt_id: null,
+        cancelled_at: null,
+        cancelled_by: null,
       };
 
       if (paymentMethod === "Hutang") {
+        const selectedSupplier = (suppliers || []).find(s => s.id === selectedSupplierId);
         logDocument.hutang_info = {
-          supplier_name: supplierName,
+          supplier_id: selectedSupplierId,
+          supplier_name: selectedSupplier?.nama_supplier || '',
           due_date: new Date(dueDate).getTime(),
         };
+        logDocument.supplier_id = selectedSupplierId;
+      } else if (activeInboundSupplierId) {
+        // Catat supplier_id di log meskipun pembayaran tunai
+        logDocument.supplier_id = activeInboundSupplierId;
       }
 
       if (isAdmin) {
@@ -193,6 +275,37 @@ const Inbound = () => {
           "rw",
           [db.products, db.inbound_logs, db.expenses, db.debts],
           async () => {
+            let expenseId = null;
+            let debtId = null;
+
+            // Akuntansi (Catat terlebih dahulu untuk mendapatkan ID)
+            if (inboundSummary.totalHpp > 0) {
+              if (paymentMethod === "Kas Tunai") {
+                expenseId = await db.expenses.add({
+                  amount: inboundSummary.totalHpp,
+                  description: `Inbound Langsung: ${note}`,
+                  timestamp: new Date().getTime(),
+                  synced: 0,
+                });
+              } else if (paymentMethod === "Hutang") {
+                const selectedSupplier = (suppliers || []).find(s => s.id === selectedSupplierId);
+                debtId = await db.debts.add({
+                  supplier_id: selectedSupplierId,
+                  supplier_name: selectedSupplier?.nama_supplier || '',
+                  description: `Hutang Inbound: ${note}`,
+                  amount: inboundSummary.totalHpp,
+                  paid_amount: 0,
+                  due_date: new Date(dueDate).getTime(),
+                  status: "UNPAID",
+                  created_at: Date.now(),
+                 });
+              }
+            }
+
+            // Tautkan ID referensi keuangan ke dokumen log
+            logDocument.expense_id = expenseId || null;
+            logDocument.debt_id = debtId || null;
+
             // Update Stok
             for (const { product, qty } of inboundSummary.items) {
               await db.products.update(product.id, {
@@ -201,28 +314,6 @@ const Inbound = () => {
             }
             // Catat Log
             await db.inbound_logs.add(logDocument);
-
-            // Akuntansi
-            if (inboundSummary.totalHpp > 0) {
-              if (paymentMethod === "Kas Tunai") {
-                await db.expenses.add({
-                  amount: inboundSummary.totalHpp,
-                  description: `Inbound Langsung: ${note}`,
-                  timestamp: new Date().getTime(),
-                  synced: 0,
-                });
-              } else if (paymentMethod === "Hutang") {
-                await db.debts.add({
-                  supplier_name: supplierName,
-                  description: `Hutang Inbound: ${note}`,
-                  amount: inboundSummary.totalHpp,
-                  paid_amount: 0,
-                  due_date: new Date(dueDate).getTime(),
-                  status: "UNPAID",
-                  created_at: Date.now(),
-                });
-              }
-            }
           },
         );
         showAlert(
@@ -250,7 +341,7 @@ const Inbound = () => {
       setSearchQuery("");
       setIsPaymentModalOpen(false);
       setPaymentMethod("Kas Tunai");
-      setSupplierName("");
+      setSelectedSupplierId("");
       setDueDate("");
       setActiveTab("history"); // Langsung lempar ke tab riwayat
     } catch (error) {
@@ -259,6 +350,108 @@ const Inbound = () => {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Fase 3 (Lapisan 2): Kasir/Admin tarik pengajuan PENDING
+  const handleWithdrawPending = async (log) => {
+    showConfirm(
+      "Apakah Anda yakin ingin menarik dan membatalkan pengajuan Inbound ini? Data belum mempengaruhi stok dan keuangan.",
+      async () => {
+        try {
+          await db.inbound_logs.update(log.id, {
+            status: "CANCELLED",
+            cancelled_at: Date.now(),
+            cancelled_by: getFullName(),
+          });
+          showAlert("Pengajuan Inbound berhasil dibatalkan/ditarik.", "success");
+          if (selectedLog?.id === log.id) {
+            setSelectedLog((prev) => ({
+              ...prev,
+              status: "CANCELLED",
+              cancelled_at: Date.now(),
+              cancelled_by: getFullName(),
+            }));
+          }
+        } catch (error) {
+          console.error("Gagal menarik pengajuan:", error);
+          showAlert("Terjadi kesalahan saat membatalkan pengajuan.", "error");
+        }
+      },
+    );
+  };
+
+  // Fase 4 (Lapisan 3): Owner rollback 1-klik pada Inbound APPROVED
+  const handleRollbackApproved = async (log) => {
+    let negativeWarning = "";
+    for (const item of log.items || []) {
+      const p = await db.products.get(item.product_id);
+      if (p && (p.stok || 0) - item.qty_masuk < 0) {
+        negativeWarning = `\n\nPERINGATAN: Stok '${item.nama}' saat ini (${p.stok} pcs) lebih kecil dari jumlah yang akan ditarik (${item.qty_masuk} pcs). Stok akan menjadi negatif!`;
+        break;
+      }
+    }
+
+    showConfirm(
+      `Apakah Anda yakin ingin menganulir dan melakukan Rollback pada Inbound ini? Stok barang akan dikurangi, serta pencatatan kas/hutang terkait akan dihapus.${negativeWarning}`,
+      async () => {
+        try {
+          await db.transaction(
+            "rw",
+            [
+              db.products,
+              db.inbound_logs,
+              db.expenses,
+              db.debts,
+              db.pending_deletions,
+            ],
+            async () => {
+              // A. Rollback Stok
+              for (const item of log.items || []) {
+                const product = await db.products.get(item.product_id);
+                if (product) {
+                  const newStok = (product.stok || 0) - item.qty_masuk;
+                  await db.products.update(product.id, { stok: newStok });
+                }
+              }
+
+              // B. Rollback Keuangan
+              if (log.expense_id) {
+                await deleteAndSync("expenses", log.expense_id);
+              }
+              if (log.debt_id) {
+                await deleteAndSync("debts", log.debt_id);
+              }
+
+              // C. Update Status Log
+              await db.inbound_logs.update(log.id, {
+                status: "CANCELLED",
+                cancelled_at: Date.now(),
+                cancelled_by: getFullName(),
+              });
+            },
+          );
+
+          showAlert(
+            "Inbound berhasil dianulir! Stok, kas tunai, dan hutang supplier telah dikembalikan ke posisi semula.",
+            "success",
+          );
+          if (selectedLog?.id === log.id) {
+            setSelectedLog((prev) => ({
+              ...prev,
+              status: "CANCELLED",
+              cancelled_at: Date.now(),
+              cancelled_by: getFullName(),
+            }));
+          }
+        } catch (error) {
+          console.error("Gagal rollback:", error);
+          showAlert(
+            "Terjadi kesalahan sistem saat melakukan rollback.",
+            "error",
+          );
+        }
+      },
+    );
   };
 
   const formatDate = (isoString) => {
@@ -313,6 +506,22 @@ const Inbound = () => {
           {/* Kolom Kiri: Tabel Data Utama */}
           <div className="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 min-h-[60vh] lg:min-h-0 overflow-hidden relative">
             <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex-shrink-0 z-20 relative shadow-[0_4px_10px_-4px_rgba(0,0,0,0.05)]">
+              {/* Filter Supplier Aktif */}
+              {suppliers && suppliers.length > 0 && (
+                <div className="mb-3 flex items-center gap-2 bg-primary-50/70 border border-primary-100 rounded-xl px-3 py-2">
+                  <Truck className="w-4 h-4 text-primary-500 flex-shrink-0" />
+                  <select
+                    value={activeInboundSupplierId}
+                    onChange={(e) => setActiveInboundSupplierId(e.target.value)}
+                    className="flex-1 text-sm bg-transparent outline-none text-primary-800 font-semibold cursor-pointer"
+                  >
+                    <option value="">🏪 Semua Supplier (Tampilkan Semua Barang)</option>
+                    {suppliers.map(s => (
+                      <option key={s.id} value={s.id}>🚚 Fokus: {s.nama_supplier}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="relative">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
@@ -324,6 +533,7 @@ const Inbound = () => {
                 />
               </div>
             </div>
+
 
             <div className="flex-1 overflow-auto">
               <table className="w-full text-left border-collapse min-w-[700px]">
@@ -435,18 +645,98 @@ const Inbound = () => {
           {/* Kolom Kanan: Panel Aksi & Simpan */}
           <div className="w-full lg:w-80 flex flex-col gap-4 flex-shrink-0">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 sticky top-6">
-              <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                <Save className="w-5 h-5 text-primary-500" />
-                Ringkasan Inbound
-              </h3>
-              <div className="bg-primary-50 border border-primary-100 rounded-xl p-4 flex flex-col items-center justify-center mb-5">
-                <span className="text-sm font-semibold text-primary-600 mb-1">
-                  Total SKU Masuk
-                </span>
-                <span className="text-4xl font-bold text-primary-700">
-                  {totalItemsToUpdate}
-                </span>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                  <Save className="w-5 h-5 text-primary-500" />
+                  Ringkasan Inbound
+                </h3>
+                {totalItemsToUpdate > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearAllDrafts}
+                    className="text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100/80 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Kosongkan
+                  </button>
+                )}
               </div>
+
+              {/* Kartu Metrik Ganda */}
+              <div className="grid grid-cols-2 gap-2.5 mb-4">
+                <div className="bg-primary-50/80 border border-primary-100 rounded-xl p-3 flex flex-col items-center justify-center text-center">
+                  <span className="text-[11px] font-bold text-primary-600 uppercase tracking-wider mb-0.5">
+                    Total SKU
+                  </span>
+                  <span className="text-xl font-extrabold text-primary-700">
+                    {totalItemsToUpdate}{" "}
+                    <span className="text-xs font-normal text-primary-600">
+                      ({totalPcsToUpdate} pcs)
+                    </span>
+                  </span>
+                </div>
+                <div className="bg-amber-50/80 border border-amber-100 rounded-xl p-3 flex flex-col items-center justify-center text-center">
+                  <span className="text-[11px] font-bold text-amber-600 uppercase tracking-wider mb-0.5">
+                    Est. Modal
+                  </span>
+                  <span className="text-sm font-extrabold text-amber-700 line-clamp-1">
+                    {formatRupiah(estimatedTotalHpp)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Interactive Draft List */}
+              <div className="mb-4">
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">
+                  Daftar Barang Dipilih ({totalItemsToUpdate})
+                </label>
+                <div className="border border-gray-200 rounded-xl bg-gray-50/50 p-2 max-h-56 overflow-y-auto divide-y divide-gray-100 space-y-1.5">
+                  {selectedDraftItems.length === 0 ? (
+                    <div className="py-6 px-4 text-center flex flex-col items-center justify-center text-gray-400">
+                      <Package className="w-8 h-8 text-gray-300 mb-1.5" />
+                      <p className="text-xs font-medium text-gray-500">
+                        Belum ada barang dipilih
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        Scan barcode atau klik tombol + pada tabel di samping
+                      </p>
+                    </div>
+                  ) : (
+                    selectedDraftItems.map((p) => {
+                      const qty = pendingUpdates[p.id] || 0;
+                      return (
+                        <div
+                          key={p.id}
+                          className="pt-1.5 first:pt-0 flex items-center justify-between gap-2 text-xs"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-gray-800 line-clamp-1">
+                              {p.nama}
+                            </p>
+                            <span className="text-[10px] font-mono text-gray-500 block">
+                              {p.barcode || "NO-SKU"}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <span className="font-bold text-primary-700 bg-primary-100/80 px-2 py-0.5 rounded-md text-[11px]">
+                              +{qty} pcs
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveFromDraft(p.id)}
+                              className="p-1 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Hapus dari draft"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Referensi Nota / Catatan <span className="text-red-500">*</span>
               </label>
@@ -557,15 +847,24 @@ const Inbound = () => {
                 <div className="animate-in slide-in-from-top-2 duration-300 space-y-3 bg-red-50/50 p-4 rounded-xl border border-red-100">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">
-                      Nama Supplier / Penagih *
+                      Supplier / Penagih *
                     </label>
-                    <input
-                      type="text"
-                      placeholder="Contoh: PT. Indofood Sukses"
-                      value={supplierName}
-                      onChange={(e) => setSupplierName(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-400/20 bg-white"
-                    />
+                    {(suppliers && suppliers.length > 0) ? (
+                      <select
+                        value={selectedSupplierId}
+                        onChange={(e) => setSelectedSupplierId(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-400/20 bg-white"
+                      >
+                        <option value="">-- Pilih Supplier --</option>
+                        {suppliers.map(s => (
+                          <option key={s.id} value={s.id}>{s.nama_supplier}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p className="text-xs text-orange-600 bg-orange-50 p-2 rounded-lg border border-orange-100">
+                        Belum ada master supplier. Minta Admin tambahkan di menu <strong>Inventory → Daftar Supplier</strong>.
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">
@@ -581,20 +880,58 @@ const Inbound = () => {
                 </div>
               )}
 
-              {paymentMethod === "Kas Tunai" && inboundSummary.totalHpp > 0 && (
-                <p className="text-xs text-gray-500 text-center bg-gray-50 p-2 rounded-lg">
-                  Kas tunai di laporan Neraca akan berkurang sebesar{" "}
-                  {formatRupiah(inboundSummary.totalHpp)}.
+
+              {/* Card Ringkasan Dampak */}
+              <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3.5 space-y-2 mt-2">
+                <p className="text-xs font-bold text-amber-900 flex items-center gap-1.5 uppercase tracking-wide">
+                  <AlertTriangle className="w-4 h-4 text-amber-600" />
+                  Ringkasan Dampak Transaksi
                 </p>
-              )}
+                <div className="text-xs text-amber-800 space-y-1.5 pl-1">
+                  <p className="flex items-start gap-1.5">
+                    <span>📦</span>
+                    <span>
+                      <strong>Dampak Stok:</strong> {inboundSummary.items.length} SKU (Total {inboundSummary.items.reduce((acc, i) => acc + i.qty, 0)} pcs) akan ditambahkan ke Master Barang.
+                    </span>
+                  </p>
+                  <p className="flex items-start gap-1.5">
+                    <span>💰</span>
+                    <span>
+                      <strong>Dampak Keuangan:</strong>{" "}
+                      {inboundSummary.totalHpp > 0
+                        ? paymentMethod === "Kas Tunai"
+                          ? `Kas Tunai akan berkurang sebesar ${formatRupiah(inboundSummary.totalHpp)}.`
+                          : `Hutang supplier akan bertambah sebesar ${formatRupiah(inboundSummary.totalHpp)}.`
+                        : "Tidak ada dampak finansial (Rp 0)."}
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Checkbox Konfirmasi */}
+              <label className="flex items-start gap-3 p-3 bg-gray-50 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-100/60 transition-colors select-none mt-3">
+                <input
+                  type="checkbox"
+                  checked={isImpactConfirmed}
+                  onChange={(e) => setIsImpactConfirmed(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 text-primary-600 rounded border-gray-300 focus:ring-primary-500"
+                />
+                <span className="text-xs text-gray-700 font-medium leading-relaxed">
+                  Saya telah memeriksa dan memastikan bahwa jumlah barang, supplier, dan metode bayar di atas sudah benar.
+                </span>
+              </label>
             </div>
 
             {/* Footer Modal */}
             <div className="p-4 border-t border-gray-100 bg-gray-50/50">
               <button
                 onClick={handleConfirmInbound}
-                disabled={isSubmitting}
-                className="w-full py-3.5 bg-primary-500 hover:bg-primary-600 text-white font-bold rounded-xl shadow-lg shadow-primary-500/30 transition-all active:scale-95 flex items-center justify-center gap-2"
+                disabled={isSubmitting || !isImpactConfirmed}
+                className={`w-full py-3.5 font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 ${
+                  isSubmitting || !isImpactConfirmed
+                    ? "bg-gray-300 text-gray-500 cursor-not-allowed shadow-none"
+                    : "bg-primary-500 hover:bg-primary-600 text-white shadow-primary-500/30 active:scale-95"
+                }`}
               >
                 <CheckCircle className="w-5 h-5" />
                 {isSubmitting
@@ -643,14 +980,18 @@ const Inbound = () => {
                             ? "bg-green-100 text-green-700"
                             : log.status === "REJECTED"
                               ? "bg-red-100 text-red-700"
-                              : "bg-yellow-100 text-yellow-700"
+                              : log.status === "CANCELLED"
+                                ? "bg-gray-200 text-gray-600 line-through"
+                                : "bg-yellow-100 text-yellow-700"
                         }`}
                       >
                         {log.status === "APPROVED"
                           ? "DISETUJUI"
                           : log.status === "REJECTED"
                             ? "DITOLAK"
-                            : "MENUNGGU"}
+                            : log.status === "CANCELLED"
+                              ? "DIANULIR"
+                              : "MENUNGGU"}
                       </span>
                     </div>
                     <p className="font-bold text-gray-800 line-clamp-1 mb-1">
@@ -694,6 +1035,15 @@ const Inbound = () => {
                     >
                       &larr; Kembali
                     </button>
+                    {selectedLog.status === "CANCELLED" && (
+                      <div className="mb-3 p-3 bg-gray-100 border border-gray-200 rounded-xl text-xs text-gray-700 flex items-start gap-2.5">
+                        <span className="text-base">ℹ️</span>
+                        <div>
+                          <strong className="font-bold block text-gray-800">Dokumen Telah Dianulir / Dibatalkan</strong>
+                          Dibatalkan oleh <strong>{selectedLog.cancelled_by || 'System'}</strong> pada {selectedLog.cancelled_at ? formatDate(selectedLog.cancelled_at) : 'waktu tidak dicatat'}. Seluruh dampak stok barang dan pembukuan keuangan (kas/hutang) telah di-rollback.
+                        </div>
+                      </div>
+                    )}
                     <h2 className="text-2xl font-bold text-gray-800 mb-3">
                       {selectedLog.catatan}
                     </h2>
@@ -779,6 +1129,10 @@ const Inbound = () => {
                             <td className="p-4 text-center text-sm font-bold text-gray-800">
                               {selectedLog.status === "APPROVED" ? (
                                 item.stok_sesudahnya
+                              ) : selectedLog.status === "CANCELLED" ? (
+                                <span className="text-gray-400 line-through">
+                                  {item.stok_sesudahnya}
+                                </span>
                               ) : (
                                 <span className="text-gray-400 italic">
                                   Pending
@@ -794,6 +1148,48 @@ const Inbound = () => {
                     </table>
                   </div>
                 </div>
+
+                {/* Footer Aksi Detail (Lapisan 2: Tarik Kasir | Lapisan 3: Rollback Owner) */}
+                {selectedLog.status === "PENDING" && (
+                  <div className="p-4 bg-yellow-50/80 border-t border-yellow-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="text-xs text-yellow-800">
+                      <p className="font-bold flex items-center gap-1.5">
+                        <span>⏳</span> Menunggu Persetujuan Owner
+                      </p>
+                      <p className="text-yellow-700 mt-0.5">
+                        Jika terjadi kesalahan input, Anda dapat membatalkan pengajuan ini sekarang sebelum diperiksa oleh Owner.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleWithdrawPending(selectedLog)}
+                      className="px-4 py-2.5 bg-yellow-600 hover:bg-yellow-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all active:scale-95 whitespace-nowrap flex items-center justify-center gap-1.5"
+                    >
+                      <X className="w-4 h-4" />
+                      Batalkan / Tarik Pengajuan
+                    </button>
+                  </div>
+                )}
+
+                {selectedLog.status === "APPROVED" && !isKasir() && (
+                  <div className="p-4 bg-red-50/80 border-t border-red-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="text-xs text-red-800">
+                      <p className="font-bold flex items-center gap-1.5">
+                        <AlertTriangle className="w-4 h-4 text-red-600" />
+                        Fitur Khusus Admin: 1-Klik Rollback Otomatis
+                      </p>
+                      <p className="text-red-700 mt-0.5">
+                        Anulir transaksi ini untuk mengembalikan stok barang, serta menghapus catatan pengeluaran kas atau hutang.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleRollbackApproved(selectedLog)}
+                      className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all active:scale-95 whitespace-nowrap flex items-center justify-center gap-1.5"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      Batalkan & Rollback
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

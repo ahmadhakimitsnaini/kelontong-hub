@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Package, Search, Plus, ArrowLeft, Save, Edit, Trash2, Camera } from 'lucide-react';
+import { Package, Search, Plus, ArrowLeft, Save, Edit, Trash2, Camera, Truck } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import db, { deleteAndSync } from '../../db/db';
 import useNotificationStore from '../../store/useNotificationStore';
@@ -24,8 +24,15 @@ const MasterBarang = () => {
     deskripsi: "",
     harga_beli: "",
     harga_jual: "",
+    supplier_id: "",
     images: []
   });
+
+  // Ambil daftar semua supplier untuk dropdown
+  const suppliers = useLiveQuery(() => db.suppliers.orderBy('nama_supplier').toArray(), []);
+
+  // State filter supplier pada tabel produk
+  const [filterSupplierId, setFilterSupplierId] = useState('all'); // 'all' | 'none' | <uuid>
 
   // ==========================================
   // HARDWARE SCANNER INTEGRATION
@@ -84,6 +91,14 @@ const MasterBarang = () => {
     return db.products.orderBy("id").reverse().toArray();
   }, [searchQuery]);
 
+  // Filter produk berdasarkan supplier_id yang dipilih
+  const filteredBySupplier = React.useMemo(() => {
+    if (!products) return [];
+    if (filterSupplierId === 'all') return products;
+    if (filterSupplierId === 'none') return products.filter(p => !p.supplier_id);
+    return products.filter(p => p.supplier_id === filterSupplierId);
+  }, [products, filterSupplierId]);
+
   const resetForm = () => {
     setFormData({
       nama: "",
@@ -92,6 +107,7 @@ const MasterBarang = () => {
       deskripsi: "",
       harga_beli: "",
       harga_jual: "",
+      supplier_id: "",
       images: []
     });
     setEditingId(null);
@@ -106,6 +122,7 @@ const MasterBarang = () => {
       deskripsi: product.deskripsi || "",
       harga_beli: product.harga_beli || "",
       harga_jual: product.harga_jual || "",
+      supplier_id: product.supplier_id || "",
       images: product.images || []
     });
     setEditingId(product.id);
@@ -139,6 +156,7 @@ const MasterBarang = () => {
         harga_beli: parseInt(formData.harga_beli),
         harga_jual: parseInt(formData.harga_jual),
         images: formData.images,
+        supplier_id: formData.supplier_id || null,
         // stok dikelola oleh inbound, default 0 untuk barang baru
         stok: editingId ? undefined : 0, 
       };
@@ -196,6 +214,23 @@ const MasterBarang = () => {
           />
         </div>
       </div>
+      {/* Filter Supplier */}
+      {suppliers && suppliers.length > 0 && (
+        <div className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 mb-4 flex items-center gap-3">
+          <Truck className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <select
+            value={filterSupplierId}
+            onChange={(e) => setFilterSupplierId(e.target.value)}
+            className="flex-1 text-sm bg-transparent outline-none text-gray-700 cursor-pointer"
+          >
+            <option value="all">🏪 Semua Supplier</option>
+            <option value="none">⚠️ Belum Ada Supplier</option>
+            {suppliers.map(s => (
+              <option key={s.id} value={s.id}>🚚 {s.nama_supplier}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -210,14 +245,18 @@ const MasterBarang = () => {
               </tr>
             </thead>
             <tbody>
-              {(!products || products.length === 0) ? (
+              {(!filteredBySupplier || filteredBySupplier.length === 0) ? (
                 <tr>
                   <td colSpan="4" className="p-8 text-center text-gray-500">
-                    Belum ada produk terdaftar. Silakan klik "Tambah SKU Baru".
+                    {filterSupplierId === 'none'
+                      ? 'Semua produk sudah dipetakan ke supplier. 👍'
+                      : filterSupplierId !== 'all'
+                      ? 'Belum ada produk terdaftar untuk supplier ini.'
+                      : 'Belum ada produk terdaftar. Silakan klik "Tambah SKU Baru".'}
                   </td>
                 </tr>
               ) : (
-                products.map((p) => (
+                filteredBySupplier.map((p) => (
                   <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                     <td className="p-4">
                       <div className="flex items-center gap-4">
@@ -230,7 +269,7 @@ const MasterBarang = () => {
                         </div>
                         <div>
                           <p className="font-bold text-gray-800 line-clamp-1">{p.nama}</p>
-                          <div className="flex items-center gap-2 mt-1">
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
                             {p.barcode ? (
                               <span className="text-[11px] font-mono bg-gray-100 px-1.5 py-0.5 rounded text-gray-500">
                                 {p.barcode}
@@ -242,6 +281,14 @@ const MasterBarang = () => {
                               <span className="text-[11px] bg-primary-50 text-primary-600 px-1.5 py-0.5 rounded">
                                 {p.kategori}
                               </span>
+                            )}
+                            {p.supplier_id ? (
+                              <span className="text-[11px] bg-green-50 text-green-700 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                                <Truck className="w-2.5 h-2.5" />
+                                {(suppliers || []).find(s => s.id === p.supplier_id)?.nama_supplier || 'Supplier'}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] bg-orange-50 text-orange-500 px-1.5 py-0.5 rounded">Belum ada supplier</span>
                             )}
                           </div>
                         </div>
@@ -363,6 +410,28 @@ const MasterBarang = () => {
                 placeholder="Catatan tambahan mengenai produk ini..."
                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none resize-none transition-colors"
               />
+            </div>
+
+            {/* Dropdown Supplier Pemasok */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                Supplier / Pemasok
+              </label>
+              <select
+                value={formData.supplier_id}
+                onChange={(e) => setFormData({...formData, supplier_id: e.target.value})}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none transition-colors"
+              >
+                <option value="">-- Pilih Supplier Pemasok --</option>
+                {(suppliers || []).map(s => (
+                  <option key={s.id} value={s.id}>{s.nama_supplier}</option>
+                ))}
+              </select>
+              {(suppliers || []).length === 0 && (
+                <p className="text-xs text-orange-500 mt-1">
+                  Belum ada supplier terdaftar. Silakan tambahkan di menu <strong>Inventory → Daftar Supplier</strong>.
+                </p>
+              )}
             </div>
           </div>
         </div>

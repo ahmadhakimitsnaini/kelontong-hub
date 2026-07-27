@@ -29,16 +29,19 @@ const ApprovalInbound = () => {
           }
 
           // 2. Eksekusi ke pembukuan (Akuntansi)
+          let expenseId = null;
+          let debtId = null;
           if (log.total_nilai > 0) {
             if (log.sumber_dana === 'Kas Tunai') {
-              await db.expenses.add({
+              expenseId = await db.expenses.add({
                 amount: log.total_nilai,
                 description: `Approve Inbound: ${log.catatan}`,
                 timestamp: new Date().getTime(),
                 synced: 0
               });
             } else if (log.sumber_dana === 'Hutang' && log.hutang_info) {
-              await db.debts.add({
+              debtId = await db.debts.add({
+                supplier_id: log.supplier_id || log.hutang_info.supplier_id || null,
                 supplier_name: log.hutang_info.supplier_name,
                 description: `Approve Inbound (Hutang): ${log.catatan}`,
                 amount: log.total_nilai,
@@ -50,8 +53,12 @@ const ApprovalInbound = () => {
             }
           }
 
-          // 3. Ubah status log menjadi APPROVED
-          await db.inbound_logs.update(log.id, { status: 'APPROVED' });
+          // 3. Ubah status log menjadi APPROVED dan tautkan ID referensi keuangan
+          await db.inbound_logs.update(log.id, { 
+            status: 'APPROVED',
+            expense_id: expenseId || null,
+            debt_id: debtId || null
+          });
         });
 
         showAlert('Pengajuan berhasil disetujui! Stok dan pembukuan telah diupdate.', 'success');
