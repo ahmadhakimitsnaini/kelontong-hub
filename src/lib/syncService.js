@@ -108,6 +108,30 @@ export const getPendingSyncCount = async () => {
 };
 
 /**
+ * Menghapus SEMUA data dari seluruh tabel lokal IndexedDB.
+ *
+ * Dipanggil saat event logout() untuk mencegah kebocoran data
+ * antar akun (cross-account data contamination) pada perangkat yang sama.
+ * Tanpa ini, data Akun A akan terlihat oleh Akun B yang login berikutnya.
+ */
+export const clearAllLocalData = async () => {
+  console.log('[Sync] Membersihkan seluruh data lokal IndexedDB...');
+  for (const tableName of syncableTables) {
+    try {
+      if (!db[tableName]) continue;
+      await db[tableName].clear();
+    } catch (err) {
+      console.error(`[Sync] Gagal membersihkan tabel lokal '${tableName}':`, err);
+    }
+  }
+  // Bersihkan juga tabel non-syncable yang mungkin ada data lintas akun
+  if (db.pending_deletions) {
+    try { await db.pending_deletions.clear(); } catch (err) { /* abaikan */ }
+  }
+  console.log('[Sync] Pembersihan IndexedDB selesai.');
+};
+
+/**
  * Menarik (Pull) semua data dari Supabase ke IndexedDB Lokal.
  * Sangat berguna saat user pertama kali login di perangkat baru.
  */
@@ -131,19 +155,24 @@ export const pullFromSupabase = async () => {
         continue;
       }
 
-      if (data && data.length > 0) {
-        // Hapus data lokal dan timpa dengan data dari Cloud (Source of Truth)
-        // Kita tambahkan flag synced: 1 agar tidak di-push balik ke cloud
+      // PERBAIKAN KRITIS: Tabel lokal SELALU dikosongkan saat pull berhasil,
+      // meskipun data cloud kosong (data.length === 0).
+      // Kondisi lama `if (data && data.length > 0)` menyebabkan data akun
+      // sebelumnya tidak terhapus ketika akun baru login dengan data cloud kosong.
+      if (!error && data !== null) {
+        // Tambahkan flag synced: 1 agar data cloud tidak di-push balik ke server
         const recordsToInsert = data.map(item => ({ ...item, synced: 1 }));
-        
+
         await db.transaction('rw', db[tableName], async () => {
-          // Bersihkan tabel lokal agar tidak ada duplikasi ID
+          // Bersihkan dulu — Cloud adalah Source of Truth
           await db[tableName].clear();
-          // Masukkan data dari cloud
-          await db[tableName].bulkAdd(recordsToInsert);
+          // Masukkan data dari cloud (jika ada)
+          if (recordsToInsert.length > 0) {
+            await db[tableName].bulkAdd(recordsToInsert);
+          }
         });
 
-        console.log(`[Sync Pull] Berhasil menarik ${data.length} baris untuk tabel ${tableName}`);
+        console.log(`[Sync Pull] Tabel '${tableName}': lokal dibersihkan, ${data.length} baris dimuat dari cloud.`);
       }
     } catch (err) {
       console.error(`[Sync Pull] Kesalahan memproses tabel ${tableName}:`, err);

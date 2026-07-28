@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import db from "../../db/db";
-import { syncAllPendingData, getPendingSyncCount } from "../../lib/syncService";
+import { syncAllPendingData, getPendingSyncCount, pullFromSupabase } from "../../lib/syncService";
 import GlobalNotification from "./GlobalNotification";
 import useAuthStore from "../../store/useAuthStore";
 
@@ -49,9 +49,18 @@ const AppLayout = () => {
       setPendingCount(count);
     };
 
-    const handleOnline = () => {
+    // PERBAIKAN: handleOnline kini melakukan sinkronisasi DUA ARAH (Bidirectional).
+    // Urutan: PUSH dulu (kirim data lokal tertunda), lalu PULL (ambil data cloud terbaru).
+    // Ini krusial saat perangkat baru kembali online setelah offline—
+    // data yang diinput offline harus dikirim, lalu data dari perangkat lain ditarik.
+    const handleOnline = async () => {
       setIsOnline(true);
-      syncAllPendingData();
+      try {
+        await syncAllPendingData(); // PUSH: kirim data lokal yang tertunda ke cloud
+        await pullFromSupabase();   // PULL: tarik data terbaru dari cloud ke lokal
+      } catch (err) {
+        console.error('[AppLayout] Error saat sinkronisasi online:', err);
+      }
     };
     const handleOffline = () => setIsOnline(false);
     const handleSyncComplete = () => checkPending();
@@ -79,11 +88,22 @@ const AppLayout = () => {
       syncAllPendingData();
     }
 
-    // Polling periodik (5 detik) sebagai jaring pengaman jika event terlewat
+    // Polling periodik PUSH (5 detik) sebagai jaring pengaman jika event terlewat
     const syncInterval = setInterval(() => {
       checkPending();
       if (navigator.onLine) syncAllPendingData();
     }, 5000);
+
+    // PERBAIKAN: Polling periodik PULL (3 menit) sebagai fallback jika WebSocket
+    // Realtime mengalami silent disconnect (umum pada mobile PWA saat tab di background).
+    // Tanpa ini, perangkat tidak akan pernah menerima data terbaru jika WebSocket terputus
+    // dan pengguna tidak melakukan refresh manual.
+    const pullInterval = setInterval(() => {
+      if (navigator.onLine) {
+        console.log('[AppLayout] Periodic pull: mengambil data terbaru dari cloud...');
+        pullFromSupabase();
+      }
+    }, 3 * 60 * 1000); // 3 menit
 
     return () => {
       window.removeEventListener("online", handleOnline);
@@ -92,6 +112,7 @@ const AppLayout = () => {
       window.removeEventListener("idbWrite", handleIdbWrite);
       clearTimeout(syncTimeout);
       clearInterval(syncInterval);
+      clearInterval(pullInterval);
     };
   }, []);
 

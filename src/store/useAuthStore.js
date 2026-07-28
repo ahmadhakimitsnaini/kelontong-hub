@@ -12,7 +12,7 @@
 
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
-import { pullFromSupabase, subscribeToRealtime, unsubscribeRealtime } from '../lib/syncService'
+import { pullFromSupabase, subscribeToRealtime, unsubscribeRealtime, clearAllLocalData } from '../lib/syncService'
 
 // ── KONSTANTA KEY UNTUK LOCALSTORAGE ─────────────────────────────────────────
 const SESSION_CACHE_KEY = 'auth_session_cache'
@@ -173,7 +173,14 @@ const useAuthStore = create((set, get) => ({
   },
 
   /**
-   * logout — Akhiri sesi, bersihkan state dan cache lokal.
+   * logout — Akhiri sesi, bersihkan state, IndexedDB lokal, dan cache localStorage.
+   *
+   * Urutan pembersihan penting:
+   * 1. Putuskan WebSocket Realtime (stop incoming data)
+   * 2. Panggil Supabase signOut (invalidasi token di server)
+   * 3. Bersihkan IndexedDB (hapus data tabel lokal agar tidak bocor ke akun berikutnya)
+   * 4. Bersihkan localStorage cache (hapus session & profil)
+   * 5. Reset state Zustand
    */
   logout: async () => {
     try {
@@ -183,6 +190,9 @@ const useAuthStore = create((set, get) => ({
       // Tetap lanjutkan logout lokal meskipun request ke server gagal
       console.warn('[Auth] Supabase signOut gagal, membersihkan sesi lokal:', err.message)
     } finally {
+      // PERBAIKAN KRITIS: Bersihkan IndexedDB agar data akun ini tidak
+      // diwarisi oleh akun lain yang login berikutnya di perangkat yang sama.
+      await clearAllLocalData()
       clearCache()
       set({ session: null, user: null })
     }
@@ -243,6 +253,9 @@ supabase.auth.onAuthStateChange(async (event, session) => {
   }
 
   if (event === 'SIGNED_OUT') {
+    // Jaring pengaman: pastikan IndexedDB juga bersih jika SIGNED_OUT
+    // terpicu dari luar (misal: token expired, atau signOut dari tab lain)
+    clearAllLocalData().catch(console.error)
     unsubscribeRealtime()
     clearCache()
     useAuthStore.setState({ session: null, user: null })
