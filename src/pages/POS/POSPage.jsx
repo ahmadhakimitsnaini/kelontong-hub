@@ -114,10 +114,16 @@ const POSPage = () => {
       const kembalian = paymentMethod === 'Tunai' ? paid - totalHarga : 0;
       const txTimestamp = new Date().getTime();
 
+      // Cari shift aktif (yang belum ditutup / belum memiliki waktu_selesai)
+      const allShifts = await db.shifts.orderBy("id").reverse().toArray();
+      const activeShift = allShifts.find(s => !s.waktu_selesai && !s.end_time);
+      const currentShiftId = activeShift ? activeShift.id : null;
+
       // ATOMIC TRANSACTION: Pastikan simpan nota dan potong stok terjadi bersamaan (anti-bocor)
       await db.transaction('rw', [db.transactions, db.products], async () => {
         // 1. Simpan Transaksi ke Database
         await db.transactions.add({
+          shift_id: currentShiftId,
           total: totalHarga,
           items: [...cartItems],
           payment_method: paymentMethod,
