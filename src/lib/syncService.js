@@ -155,24 +155,31 @@ export const pullFromSupabase = async () => {
         continue;
       }
 
-      // PERBAIKAN KRITIS: Tabel lokal SELALU dikosongkan saat pull berhasil,
-      // meskipun data cloud kosong (data.length === 0).
-      // Kondisi lama `if (data && data.length > 0)` menyebabkan data akun
-      // sebelumnya tidak terhapus ketika akun baru login dengan data cloud kosong.
       if (!error && data !== null) {
         // Tambahkan flag synced: 1 agar data cloud tidak di-push balik ke server
         const recordsToInsert = data.map(item => ({ ...item, synced: 1 }));
 
         await db.transaction('rw', db[tableName], async () => {
-          // Bersihkan dulu — Cloud adalah Source of Truth
+          // 1. Ambil & pertahankan record lokal yang MASIH PENDING (synced === 0)
+          const allLocal = await db[tableName].toArray();
+          const pendingLocalRecords = allLocal.filter(r => r.synced === 0 || r.synced === undefined);
+
+          // 2. Bersihkan dulu — Cloud adalah Source of Truth untuk data tersinkron
           await db[tableName].clear();
-          // Masukkan data dari cloud (jika ada)
+
+          // 3. Masukkan data dari cloud (jika ada)
           if (recordsToInsert.length > 0) {
             await db[tableName].bulkAdd(recordsToInsert);
           }
+
+          // 4. Masukkan kembali record lokal yang masih pending agar tidak hilang!
+          if (pendingLocalRecords.length > 0) {
+            await db[tableName].bulkPut(pendingLocalRecords);
+            console.log(`[Sync Pull] Mempertahankan ${pendingLocalRecords.length} record lokal tertunda (synced: 0) di tabel '${tableName}'`);
+          }
         });
 
-        console.log(`[Sync Pull] Tabel '${tableName}': lokal dibersihkan, ${data.length} baris dimuat dari cloud.`);
+        console.log(`[Sync Pull] Tabel '${tableName}': lokal disinkronkan, ${data.length} baris dimuat dari cloud.`);
       }
     } catch (err) {
       console.error(`[Sync Pull] Kesalahan memproses tabel ${tableName}:`, err);
