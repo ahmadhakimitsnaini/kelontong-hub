@@ -196,9 +196,16 @@ export const pullFromSupabase = async () => {
  * perangkat ini akan langsung menerima datanya secara instan tanpa perlu refresh.
  */
 let realtimeChannel = null;
+let reconnectTimer = null;
 
 export const subscribeToRealtime = () => {
-  if (realtimeChannel) return; // Cegah double subscription
+  // Jika channel lama sudah ada, bersihkan dulu agar bisa menggunakan token JWT terbaru
+  if (realtimeChannel) {
+    console.log('[Sync Realtime] Mereset saluran WebSocket lama...');
+    supabase.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+  }
+  clearTimeout(reconnectTimer);
 
   console.log('[Sync Realtime] Menghubungkan ke WebSocket Supabase...');
 
@@ -235,10 +242,22 @@ export const subscribeToRealtime = () => {
     )
     .subscribe((status) => {
       console.log('[Sync Realtime] Status Koneksi WebSocket:', status);
+      // AUTO-RECONNECT: Jika koneksi terputus atau error, coba hubungkan kembali setelah 3 detik
+      if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.warn('[Sync Realtime] WebSocket terputus. Mencoba menghubungkan kembali dalam 3 detik...');
+        if (realtimeChannel) {
+          supabase.removeChannel(realtimeChannel);
+          realtimeChannel = null;
+        }
+        reconnectTimer = setTimeout(() => {
+          if (navigator.onLine) subscribeToRealtime();
+        }, 3000);
+      }
     });
 };
 
 export const unsubscribeRealtime = () => {
+  clearTimeout(reconnectTimer);
   if (realtimeChannel) {
     supabase.removeChannel(realtimeChannel);
     realtimeChannel = null;
