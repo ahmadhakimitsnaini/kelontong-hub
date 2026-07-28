@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import db from "../../db/db";
-import { syncAllPendingData, getPendingSyncCount, pullFromSupabase } from "../../lib/syncService";
+import { syncAllPendingData, getPendingSyncCount, pullFromSupabase, subscribeToRealtime } from "../../lib/syncService";
 import GlobalNotification from "./GlobalNotification";
 import useAuthStore from "../../store/useAuthStore";
 
@@ -77,10 +77,27 @@ const AppLayout = () => {
       }, 300);
     };
 
+    // PELATUK FOKUS LAYAR: Saat pengguna membuka kembali tab/layar aplikasi (misal di Device 2),
+    // langsung tarik data terbaru dari cloud jika belum ditarik dalam 15 detik terakhir.
+    let lastFocusPull = Date.now();
+    const handleVisibilityChange = () => {
+      if ((document.visibilityState === 'visible' || document.hasFocus()) && navigator.onLine) {
+        const now = Date.now();
+        if (now - lastFocusPull > 15000) { // Throttle 15 detik
+          console.log('[AppLayout] Layar kembali aktif: menarik data terbaru dari cloud...');
+          lastFocusPull = now;
+          pullFromSupabase();
+          subscribeToRealtime(); // Pastikan WebSocket tetap hidup & terhubung
+        }
+      }
+    };
+
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
     window.addEventListener("syncCompleted", handleSyncComplete);
     window.addEventListener("idbWrite", handleIdbWrite);
+    window.addEventListener("focus", handleVisibilityChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     // Initial sync & check
     checkPending();
@@ -110,6 +127,8 @@ const AppLayout = () => {
       window.removeEventListener("offline", handleOffline);
       window.removeEventListener("syncCompleted", handleSyncComplete);
       window.removeEventListener("idbWrite", handleIdbWrite);
+      window.removeEventListener("focus", handleVisibilityChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       clearTimeout(syncTimeout);
       clearInterval(syncInterval);
       clearInterval(pullInterval);
