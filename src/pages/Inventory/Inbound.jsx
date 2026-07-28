@@ -259,14 +259,17 @@ const Inbound = () => {
       if (paymentMethod === "Hutang") {
         const selectedSupplier = (suppliers || []).find(s => s.id === selectedSupplierId);
         logDocument.hutang_info = {
-          supplier_id: selectedSupplierId,
+          // Sanitasi: simpan null jika ID kosong/tidak dipilih, bukan string "" yang ditolak PostgreSQL UUID
+          supplier_id: selectedSupplierId || null,
           supplier_name: selectedSupplier?.nama_supplier || '',
           due_date: new Date(dueDate).getTime(),
         };
-        logDocument.supplier_id = selectedSupplierId;
+        // Sanitasi UUID: string kosong "" akan menyebabkan error di PostgreSQL kolom UUID
+        logDocument.supplier_id = selectedSupplierId || null;
       } else if (activeInboundSupplierId) {
         // Catat supplier_id di log meskipun pembayaran tunai
-        logDocument.supplier_id = activeInboundSupplierId;
+        // Sanitasi UUID: pastikan selalu null jika value falsy/string kosong
+        logDocument.supplier_id = activeInboundSupplierId || null;
       }
 
       if (isAdmin) {
@@ -343,6 +346,10 @@ const Inbound = () => {
       setPaymentMethod("Kas Tunai");
       setSelectedSupplierId("");
       setDueDate("");
+      // Perbaikan UI Responsif: reset selectedLog ke null agar panel daftar
+      // riwayat (kiri) tidak tersembunyi di layar kecil (mobile/tablet)
+      // karena kondisi CSS: w-full ${selectedLog ? "hidden lg:flex" : "flex"}
+      setSelectedLog(null);
       setActiveTab("history"); // Langsung lempar ke tab riwayat
     } catch (error) {
       console.error("Inbound error:", error);
