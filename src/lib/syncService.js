@@ -3,93 +3,122 @@ import { supabase } from './supabase'
 
 const syncableTables = ['products', 'transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation', 'inbound_logs', 'settings', 'suppliers'];
 
+// ── MUTEX FLAG ────────────────────────────────────────────────────────────────
+// Mencegah race condition antara fungsi PUSH (syncAllPendingData) dan
+// PULL (pullFromSupabase) yang berjalan bersamaan. Tanpa mutex, fungsi
+// pullFromSupabase() bisa memanggil db.clear() di tengah-tengah proses push,
+// menyebabkan data yang belum di-push ke cloud hilang dari IndexedDB.
+let isSyncing = false;
+
 /**
  * Mensinkronisasi semua data yang tertunda ke Supabase.
+ * @param {string|null} userId - ID user yang sedang login (dari Supabase Auth)
  */
-export const syncAllPendingData = async () => {
+export const syncAllPendingData = async (userId = null) => {
   if (!navigator.onLine) {
     console.log('[Sync] Offline, sinkronisasi dibatalkan.');
     return;
   }
 
-  let totalSynced = 0;
+  // Guard: Jangan jalankan jika proses sync lain sedang berlangsung
+  if (isSyncing) {
+    console.log('[Sync] Proses sinkronisasi sedang berjalan, lewati...');
+    return;
+  }
 
-  // 1. PROSES PENDING DELETIONS
-  if (db.pending_deletions) {
-    try {
-      const deletions = await db.pending_deletions.toArray();
-      if (deletions.length > 0) {
-        console.log(`[Sync] Menemukan ${deletions.length} data untuk dihapus di cloud`);
-        for (const del of deletions) {
-          const pk = del.tableName === 'settings' ? 'key' : 'id';
-          const { error } = await supabase.from(del.tableName).delete().eq(pk, del.recordId);
-          if (error) {
-            console.error(`[Sync] Error hapus ${del.recordId} di tabel ${del.tableName}:`, error);
-          } else {
-            await db.pending_deletions.delete(del.id);
-            totalSynced++;
+  isSyncing = true;
+
+  try {
+    let totalSynced = 0;
+
+    // 1. PROSES PENDING DELETIONS
+    if (db.pending_deletions) {
+      try {
+        const deletions = await db.pending_deletions.toArray();
+        if (deletions.length > 0) {
+          console.log(`[Sync] Menemukan ${deletions.length} data untuk dihapus di cloud`);
+          for (const del of deletions) {
+            const pk = del.tableName === 'settings' ? 'key' : 'id';
+            const { error } = await supabase.from(del.tableName).delete().eq(pk, del.recordId);
+            if (error) {
+              console.error(`[Sync] Error hapus ${del.recordId} di tabel ${del.tableName}:`, error);
+            } else {
+              await db.pending_deletions.delete(del.id);
+              totalSynced++;
+            }
           }
         }
+      } catch (err) {
+        console.error(`[Sync] Error proses pending_deletions:`, err);
       }
-    } catch (err) {
-      console.error(`[Sync] Error proses pending_deletions:`, err);
     }
-  }
 
-  // 2. PROSES PENDING UPSERTS
-  for (const tableName of syncableTables) {
-    try {
-      if (!db[tableName]) continue;
+    // 2. PROSES PENDING UPSERTS
+    for (const tableName of syncableTables) {
+      try {
+        if (!db[tableName]) continue;
 
-      // Mengambil semua record, filter secara manual untuk menangkap
-      // record dengan synced = 0, atau synced = undefined (data lama).
-      const allRecords = await db[tableName].toArray();
-      const unsyncedRecords = allRecords.filter(r => r.synced === 0 || r.synced === undefined);
+        // Mengambil semua record, filter secara manual untuk menangkap
+        // record dengan synced = 0, atau synced = undefined (data lama).
+        const allRecords = await db[tableName].toArray();
+        const unsyncedRecords = allRecords.filter(r => r.synced === 0 || r.synced === undefined);
 
-      if (unsyncedRecords.length === 0) continue;
+        if (unsyncedRecords.length === 0) continue;
 
-      console.log(`[Sync] Menemukan ${unsyncedRecords.length} data tertunda di tabel ${tableName}`);
+        console.log(`[Sync] Menemukan ${unsyncedRecords.length} data tertunda di tabel ${tableName}`);
 
-      // Persiapkan data untuk dikirim ke Supabase
-      const payload = unsyncedRecords.map(record => {
-        // Hapus property 'synced' karena itu hanya metadata lokal
-        // KITA PERTAHANKAN 'id' (UUID) AGAR TIDAK DUPLIKASI
-        const { synced, ...rest } = record;
-        return rest;
-      });
+        // Persiapkan data untuk dikirim ke Supabase
+        const payload = unsyncedRecords.map(record => {
+          // Hapus property 'synced' karena itu hanya metadata lokal
+          // KITA PERTAHANKAN 'id' (UUID) AGAR TIDAK DUPLIKASI
+          const { synced, ...rest } = record;
 
-      // Gunakan UPSERT: 
-      // Jika ID sudah ada di awan, timpa datanya (Update). 
-      // Jika ID belum ada, tambahkan baru (Insert).
-      const primaryKey = tableName === 'settings' ? 'key' : 'id';
-      const { error } = await supabase
-        .from(tableName)
-        .upsert(payload, { onConflict: primaryKey });
+          // Inject user_id ke payload jika record belum memilikinya.
+          // Ini memastikan RLS di Supabase dapat mengenali kepemilikan data.
+          if (userId && !rest.user_id) {
+            rest.user_id = userId;
+          }
 
-      if (error) {
-        console.error(`[Sync] Error saat insert ke Supabase tabel ${tableName}:`, error.message || error);
-        continue; 
-      }
+          return rest;
+        });
 
-      // Jika berhasil di-cloud, update status lokal
-      const idsToUpdate = unsyncedRecords.map(r => tableName === 'settings' ? r.key : r.id);
-      await db.transaction('rw', db[tableName], async () => {
-        for (const localId of idsToUpdate) {
-          await db[tableName].update(localId, { synced: 1 });
+        // Gunakan UPSERT:
+        // Jika ID sudah ada di awan, timpa datanya (Update).
+        // Jika ID belum ada, tambahkan baru (Insert).
+        const primaryKey = tableName === 'settings' ? 'key' : 'id';
+        const { error } = await supabase
+          .from(tableName)
+          .upsert(payload, { onConflict: primaryKey });
+
+        if (error) {
+          console.error(`[Sync] Error saat insert ke Supabase tabel ${tableName}:`, error.message || error);
+          continue;
         }
-      });
-      
-      totalSynced += unsyncedRecords.length;
 
-    } catch (err) {
-      console.error(`[Sync] Kesalahan tak terduga pada tabel ${tableName}:`, err);
+        // Jika berhasil di-cloud, update status lokal
+        const idsToUpdate = unsyncedRecords.map(r => tableName === 'settings' ? r.key : r.id);
+        await db.transaction('rw', db[tableName], async () => {
+          for (const localId of idsToUpdate) {
+            await db[tableName].update(localId, { synced: 1 });
+          }
+        });
+
+        totalSynced += unsyncedRecords.length;
+
+      } catch (err) {
+        console.error(`[Sync] Kesalahan tak terduga pada tabel ${tableName}:`, err);
+      }
     }
-  }
 
-  if (totalSynced > 0) {
-    console.log(`[Sync] Berhasil mensinkronisasi ${totalSynced} baris data ke cloud.`);
-    // Trigger sebuah custom event agar UI bisa tahu kalau proses sync telah selesai
-    window.dispatchEvent(new Event('syncCompleted'));
+    if (totalSynced > 0) {
+      console.log(`[Sync] Berhasil mensinkronisasi ${totalSynced} baris data ke cloud.`);
+      // Trigger sebuah custom event agar UI bisa tahu kalau proses sync telah selesai
+      window.dispatchEvent(new Event('syncCompleted'));
+    }
+
+  } finally {
+    // Selalu lepas flag, bahkan jika ada error, agar tidak stuck
+    isSyncing = false;
   }
 };
 
@@ -134,60 +163,85 @@ export const clearAllLocalData = async () => {
 /**
  * Menarik (Pull) semua data dari Supabase ke IndexedDB Lokal.
  * Sangat berguna saat user pertama kali login di perangkat baru.
+ * @param {string|null} userId - ID user yang sedang login (dari Supabase Auth).
+ *   Digunakan untuk memfilter data agar hanya data milik user ini yang ditarik.
+ *   Jika null, pull dilakukan tanpa filter (backward compat / fallback).
  */
-export const pullFromSupabase = async () => {
+export const pullFromSupabase = async (userId = null) => {
   if (!navigator.onLine) {
     console.log('[Sync Pull] Offline, batal menarik data.');
     return;
   }
 
-  console.log('[Sync Pull] Memulai penarikan data dari Supabase...');
-
-  for (const tableName of syncableTables) {
-    try {
-      if (!db[tableName]) continue;
-
-      // Ambil seluruh data dari tabel Supabase
-      const { data, error } = await supabase.from(tableName).select('*');
-
-      if (error) {
-        console.error(`[Sync Pull] Gagal mengambil data tabel ${tableName}:`, error.message);
-        continue;
-      }
-
-      if (!error && data !== null) {
-        // Tambahkan flag synced: 1 agar data cloud tidak di-push balik ke server
-        const recordsToInsert = data.map(item => ({ ...item, synced: 1 }));
-
-        await db.transaction('rw', db[tableName], async () => {
-          // 1. Ambil & pertahankan record lokal yang MASIH PENDING (synced === 0)
-          const allLocal = await db[tableName].toArray();
-          const pendingLocalRecords = allLocal.filter(r => r.synced === 0 || r.synced === undefined);
-
-          // 2. Bersihkan dulu — Cloud adalah Source of Truth untuk data tersinkron
-          await db[tableName].clear();
-
-          // 3. Masukkan data dari cloud (jika ada)
-          if (recordsToInsert.length > 0) {
-            await db[tableName].bulkAdd(recordsToInsert);
-          }
-
-          // 4. Masukkan kembali record lokal yang masih pending agar tidak hilang!
-          if (pendingLocalRecords.length > 0) {
-            await db[tableName].bulkPut(pendingLocalRecords);
-            console.log(`[Sync Pull] Mempertahankan ${pendingLocalRecords.length} record lokal tertunda (synced: 0) di tabel '${tableName}'`);
-          }
-        });
-
-        console.log(`[Sync Pull] Tabel '${tableName}': lokal disinkronkan, ${data.length} baris dimuat dari cloud.`);
-      }
-    } catch (err) {
-      console.error(`[Sync Pull] Kesalahan memproses tabel ${tableName}:`, err);
-    }
+  // Guard: Jika proses PUSH sedang berjalan, tunda pull agar tidak terjadi
+  // race condition (pull bisa memanggil db.clear() di tengah proses push).
+  if (isSyncing) {
+    console.log('[Sync Pull] PUSH sedang berjalan. Menunda pull selama 2 detik...');
+    setTimeout(() => pullFromSupabase(userId), 2000);
+    return;
   }
 
-  console.log('[Sync Pull] Proses selesai.');
-  window.dispatchEvent(new Event('syncCompleted'));
+  isSyncing = true;
+
+  console.log('[Sync Pull] Memulai penarikan data dari Supabase...');
+
+  try {
+    for (const tableName of syncableTables) {
+      try {
+        if (!db[tableName]) continue;
+
+        // Bangun query — filter per user_id jika tersedia
+        let query = supabase.from(tableName).select('*');
+
+        // Tabel 'settings' adalah konfigurasi perangkat/app, tidak perlu filter user
+        if (userId && tableName !== 'settings') {
+          query = query.eq('user_id', userId);
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+          console.error(`[Sync Pull] Gagal mengambil data tabel ${tableName}:`, error.message);
+          continue;
+        }
+
+        if (!error && data !== null) {
+          // Tambahkan flag synced: 1 agar data cloud tidak di-push balik ke server
+          const recordsToInsert = data.map(item => ({ ...item, synced: 1 }));
+
+          await db.transaction('rw', db[tableName], async () => {
+            // 1. Ambil & pertahankan record lokal yang MASIH PENDING (synced === 0)
+            const allLocal = await db[tableName].toArray();
+            const pendingLocalRecords = allLocal.filter(r => r.synced === 0 || r.synced === undefined);
+
+            // 2. Bersihkan dulu — Cloud adalah Source of Truth untuk data tersinkron
+            await db[tableName].clear();
+
+            // 3. Masukkan data dari cloud (jika ada)
+            if (recordsToInsert.length > 0) {
+              await db[tableName].bulkAdd(recordsToInsert);
+            }
+
+            // 4. Masukkan kembali record lokal yang masih pending agar tidak hilang!
+            if (pendingLocalRecords.length > 0) {
+              await db[tableName].bulkPut(pendingLocalRecords);
+              console.log(`[Sync Pull] Mempertahankan ${pendingLocalRecords.length} record lokal tertunda (synced: 0) di tabel '${tableName}'`);
+            }
+          });
+
+          console.log(`[Sync Pull] Tabel '${tableName}': lokal disinkronkan, ${data.length} baris dimuat dari cloud.`);
+        }
+      } catch (err) {
+        console.error(`[Sync Pull] Kesalahan memproses tabel ${tableName}:`, err);
+      }
+    }
+
+    console.log('[Sync Pull] Proses selesai.');
+    window.dispatchEvent(new Event('syncCompleted'));
+
+  } finally {
+    isSyncing = false;
+  }
 };
 
 /**
@@ -216,11 +270,11 @@ export const subscribeToRealtime = () => {
       { event: '*', schema: 'public' },
       async (payload) => {
         const { table, eventType, new: newRecord, old: oldRecord } = payload;
-        
+
         // Pastikan tabel yang berubah adalah tabel yang kita pantau
         if (syncableTables.includes(table)) {
           console.log(`[Sync Realtime] Menerima ${eventType} dari tabel ${table}`, payload);
-          
+
           try {
             await db.transaction('rw', db[table], async () => {
               if (eventType === 'INSERT' || eventType === 'UPDATE') {

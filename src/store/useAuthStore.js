@@ -77,7 +77,8 @@ const useAuthStore = create((set, get) => ({
         set({ session, user: { ...session.user, ...profile } })
 
         // Tarik semua data dari cloud ke IndexedDB (Sinkronisasi awal)
-        pullFromSupabase()
+        // Kirim userId agar pull hanya mengambil data milik akun ini
+        pullFromSupabase(session.user.id)
         
         // Aktifkan koneksi WebSocket (Realtime)
         subscribeToRealtime()
@@ -133,7 +134,8 @@ const useAuthStore = create((set, get) => ({
       set({ session: data.session, user: { ...data.session.user, ...profile } })
       
       // Tarik semua data dari cloud ke IndexedDB (Sinkronisasi awal)
-      pullFromSupabase()
+      // Kirim userId agar pull hanya mengambil data milik akun ini
+      pullFromSupabase(data.session.user.id)
 
       // Aktifkan koneksi WebSocket (Realtime)
       subscribeToRealtime()

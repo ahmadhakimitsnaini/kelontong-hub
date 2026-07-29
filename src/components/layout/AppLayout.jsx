@@ -34,7 +34,7 @@ const AppLayout = () => {
   const [pendingCount, setPendingCount] = useState(0);
   const [activeMobileSheet, setActiveMobileSheet] = useState(null);
 
-  const { isKasir, getFullName, getRole, logout } = useAuthStore();
+  const { isKasir, getFullName, getRole, logout, user } = useAuthStore();
   const [openDropdowns, setOpenDropdowns] = useState({});
 
   const toggleDropdown = (e, name) => {
@@ -56,8 +56,8 @@ const AppLayout = () => {
     const handleOnline = async () => {
       setIsOnline(true);
       try {
-        await syncAllPendingData(); // PUSH: kirim data lokal yang tertunda ke cloud
-        await pullFromSupabase();   // PULL: tarik data terbaru dari cloud ke lokal
+        await syncAllPendingData(user?.id); // PUSH: kirim data lokal yang tertunda ke cloud
+        await pullFromSupabase(user?.id);   // PULL: tarik data terbaru dari cloud ke lokal
       } catch (err) {
         console.error('[AppLayout] Error saat sinkronisasi online:', err);
       }
@@ -73,7 +73,7 @@ const AppLayout = () => {
       // Debounce 300ms agar tidak PUSH berkali-kali jika ada bulk insert
       clearTimeout(syncTimeout);
       syncTimeout = setTimeout(() => {
-        syncAllPendingData().then(checkPending);
+        syncAllPendingData(user?.id).then(checkPending);
       }, 300);
     };
 
@@ -86,7 +86,7 @@ const AppLayout = () => {
         if (now - lastFocusPull > 15000) { // Throttle 15 detik
           console.log('[AppLayout] Layar kembali aktif: menarik data terbaru dari cloud...');
           lastFocusPull = now;
-          pullFromSupabase();
+          pullFromSupabase(user?.id);
           subscribeToRealtime(); // Pastikan WebSocket tetap hidup & terhubung
         }
       }
@@ -102,13 +102,13 @@ const AppLayout = () => {
     // Initial sync & check
     checkPending();
     if (navigator.onLine) {
-      syncAllPendingData();
+      syncAllPendingData(user?.id);
     }
 
     // Polling periodik PUSH (5 detik) sebagai jaring pengaman jika event terlewat
     const syncInterval = setInterval(() => {
       checkPending();
-      if (navigator.onLine) syncAllPendingData();
+      if (navigator.onLine) syncAllPendingData(user?.id);
     }, 5000);
 
     // PERBAIKAN: Polling periodik PULL (3 menit) sebagai fallback jika WebSocket
@@ -118,7 +118,7 @@ const AppLayout = () => {
     const pullInterval = setInterval(() => {
       if (navigator.onLine) {
         console.log('[AppLayout] Periodic pull: mengambil data terbaru dari cloud...');
-        pullFromSupabase();
+        pullFromSupabase(user?.id);
       }
     }, 3 * 60 * 1000); // 3 menit
 
