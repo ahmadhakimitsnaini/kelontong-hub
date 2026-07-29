@@ -151,6 +151,29 @@ db.version(10).stores({
   suppliers: '++id, nama_supplier, kontak_phone, synced',
 });
 
+// ── VERSI 11: Tambah Index user_id untuk Isolasi Data per Akun ───────────────
+// Kolom 'user_id' ditambahkan ke seluruh tabel syncable agar:
+// 1. Query filter WHERE user_id = 'xxx' berjalan O(log n), bukan O(n) full scan.
+// 2. Data yang di-pull dari Supabase (yang sudah difilter per user_id) bisa
+//    diidentifikasi dan dikelola secara lokal per akun.
+// Tidak ada upgrade() karena hanya penambahan index — data yang sudah ada
+// tidak perlu dimodifikasi (kolom user_id akan bernilai undefined/null
+// untuk record lama, dan diisi untuk record baru).
+db.version(11).stores({
+  products:             '++id, kategori, expiry_date, nama, barcode, stok, supplier_id, user_id',
+  transactions:         '++id, shift_id, timestamp, synced, user_id',
+  shifts:               '++id, user_id, start_time, end_time, synced',
+  expenses:             '++id, shift_id, timestamp, synced, user_id',
+  journal_entries:      '++id, timestamp, account_name, type, reference_id, reference_type, user_id',
+  debts:                '++id, supplier_id, supplier_name, due_date, status, created_at, user_id',
+  receivables:          '++id, customer_name, status, last_updated, user_id',
+  cash_reconciliation:  '++id, timestamp, shift_id, user_id',
+  inbound_logs:         '++id, timestamp, supplier_id, kasir_nama, status, synced, user_id',
+  settings:             'key, synced',
+  pending_deletions:    '++id, tableName, recordId',
+  suppliers:            '++id, nama_supplier, kontak_phone, synced, user_id',
+});
+
 // ── HOOKS ────────────────────────────────────────────────────────────────────
 // Daftar semua tabel yang akan disinkronkan ke Cloud
 const syncableTables = ['products', 'transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation', 'inbound_logs', 'settings', 'suppliers'];
@@ -173,6 +196,8 @@ syncableTables.forEach(tableName => {
     if (!primKey || typeof primKey === 'number') {
       const uuid = generateUUID();
       obj.id = uuid;
+      // Pancarkan sinyal bahwa ada data baru ditulis ke lokal
+      setTimeout(() => window.dispatchEvent(new Event('idbWrite')), 0);
       return uuid;
     }
     // Pancarkan sinyal bahwa ada data baru ditulis ke lokal
