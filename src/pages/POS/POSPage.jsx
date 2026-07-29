@@ -7,6 +7,7 @@ import useNotificationStore from '../../store/useNotificationStore'
 import useHardwareScanner from '../../hooks/useHardwareScanner'
 import { playSuccessBeep, playErrorBeep } from '../../lib/audioUtils'
 import useSettingsStore from '../../store/useSettingsStore'
+import useAuthStore from '../../store/useAuthStore'
 import ReceiptModal from '../../components/ui/ReceiptModal'
 
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -20,6 +21,9 @@ const POSPage = () => {
   const clearCart = useCartStore((state) => state.clearCart)
   const totalHarga = useCartStore((state) => state.getTotal())
   const totalBarang = useCartStore((state) => state.getTotalItems())
+
+  // Ambil user yang sedang login untuk keperluan user_id pada transaksi
+  const { user } = useAuthStore()
 
   // Local State
   const [activeCategory, setActiveCategory] = useState('Semua')
@@ -130,6 +134,7 @@ const POSPage = () => {
           amount_paid: paymentMethod === 'Tunai' ? paid : totalHarga,
           kembalian: kembalian,
           timestamp: txTimestamp,
+          user_id: user?.id || null,
         })
 
         // 2. Kurangi Stok Barang di Database

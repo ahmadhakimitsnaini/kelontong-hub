@@ -14,6 +14,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import db, { deleteAndSync } from '../../db/db'
 import { formatRupiah, formatRibuan, formatTanggal, formatTanggalSingkat, TIME_RANGE_OPTIONS, getTimeRangeBounds } from '../../lib/utils'
 import useNotificationStore from '../../store/useNotificationStore'
+import useAuthStore from '../../store/useAuthStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -548,7 +549,7 @@ const TabBukuBesar = ({ transactions, expenses, timeFilter }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB: HUTANG SUPPLIER (Accounts Payable)
 // ─────────────────────────────────────────────────────────────────────────────
-const TabHutang = ({ debts, refetch }) => {
+const TabHutang = ({ debts, refetch, userId }) => {
   const [form, setForm] = useState({ supplier_name: '', description: '', amount: '', due_date: '' })
   const [showForm, setShowForm] = useState(false)
 
@@ -562,7 +563,8 @@ const TabHutang = ({ debts, refetch }) => {
       paid_amount: 0,
       due_date: new Date(form.due_date).getTime(),
       status: 'UNPAID',
-      created_at: Date.now()
+      created_at: Date.now(),
+      user_id: userId || null,
     })
     setForm({ supplier_name: '', description: '', amount: '', due_date: '' })
     setShowForm(false)
@@ -741,7 +743,7 @@ const TabHutang = ({ debts, refetch }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB: PIUTANG / KASBON (Accounts Receivable)
 // ─────────────────────────────────────────────────────────────────────────────
-const TabPiutang = ({ receivables }) => {
+const TabPiutang = ({ receivables, userId }) => {
   const [form, setForm] = useState({ customer_name: '', customer_phone: '', amount: '', credit_limit: '' })
   const [showForm, setShowForm] = useState(false)
 
@@ -763,7 +765,8 @@ const TabPiutang = ({ receivables }) => {
         amount: parseInt(form.amount),
         credit_limit: form.credit_limit ? parseInt(form.credit_limit) : 0,
         last_updated: Date.now(),
-        status: 'ACTIVE'
+        status: 'ACTIVE',
+        user_id: userId || null,
       })
     }
     setForm({ customer_name: '', customer_phone: '', amount: '', credit_limit: '' })
@@ -929,7 +932,7 @@ const TabPiutang = ({ receivables }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB: REKONSILIASI KAS (Tutup Kasir)
 // ─────────────────────────────────────────────────────────────────────────────
-const TabRekonsiliasi = ({ transactions, reconciliations }) => {
+const TabRekonsiliasi = ({ transactions, reconciliations, userId }) => {
   const [physicalCash, setPhysicalCash] = useState('')
   const [note, setNote] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -958,6 +961,7 @@ const TabRekonsiliasi = ({ transactions, reconciliations }) => {
         physical_balance: physical,
         difference: selisih,
         note: note || 'Tidak ada selisih',
+        user_id: userId || null,
       })
       setPhysicalCash('')
       setNote('')
@@ -1180,6 +1184,10 @@ const PembukuanPage = () => {
   const [activeTab, setActiveTab] = useState('laba-rugi')
   const [timeFilter, setTimeFilter] = useState({ type: 'Bulan Ini', customStart: '', customEnd: '' })
 
+  // Ambil user yang sedang login untuk keperluan user_id pada setiap write operation
+  const { user } = useAuthStore()
+  const userId = user?.id || null
+
   const { start, end, useBetween } = getTimeRangeBounds(timeFilter)
 
   // Data transaksi & pengeluaran (difilter oleh timeFilter)
@@ -1284,16 +1292,16 @@ const PembukuanPage = () => {
           <TabBukuBesar transactions={transactions} expenses={expenses} timeFilter={timeFilter} />
         )}
         {activeTab === 'hutang' && (
-          <TabHutang debts={debts} />
+          <TabHutang debts={debts} userId={userId} />
         )}
         {activeTab === 'piutang' && (
-          <TabPiutang receivables={receivables} />
+          <TabPiutang receivables={receivables} userId={userId} />
         )}
         {activeTab === 'riwayat' && (
           <TabRiwayatTransaksi transactions={transactions} />
         )}
         {activeTab === 'rekonsiliasi' && (
-          <TabRekonsiliasi transactions={allTransactions} reconciliations={reconciliations} />
+          <TabRekonsiliasi transactions={allTransactions} reconciliations={reconciliations} userId={userId} />
         )}
       </div>
     </div>
