@@ -195,7 +195,7 @@ export const pullFromSupabase = async (userId = null) => {
 
         // Tabel 'settings' adalah konfigurasi perangkat/app, tidak perlu filter user
         if (userId && tableName !== 'settings') {
-          query = query.eq('user_id', userId);
+          query = query.or(`user_id.eq.${userId},user_id.is.null`);
         }
 
         const { data, error } = await query;
