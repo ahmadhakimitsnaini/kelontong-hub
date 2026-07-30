@@ -10,6 +10,7 @@ import ApprovalInbound from "./pages/Inventory/ApprovalInbound";
 import ShiftPage from "./pages/Auth/ShiftPage";
 import PembukuanPage from "./pages/Pembukuan/PembukuanPage";
 import NightPricingSettings from "./pages/Settings/NightPricingSettings";
+import StoreSettings from "./pages/Settings/StoreSettings";
 import SupplierMaster from "./pages/Inventory/SupplierMaster";
 
 function App() {
@@ -37,6 +38,7 @@ function App() {
               <Route path="/inventory/approval" element={<ApprovalInbound />} />
               <Route path="/inventory/suppliers" element={<SupplierMaster />} />
               <Route path="/settings/night-pricing" element={<NightPricingSettings />} />
+              <Route path="/settings/store" element={<StoreSettings />} />
             </Route>
           </Route>
         </Route>

@@ -11,7 +11,8 @@ const LoginPage = () => {
   const [showResend, setShowResend] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  const { login, isLoggedIn, isInitialized, resendVerificationEmail } = useAuthStore();
+  const { login, isLoggedIn, isInitialized, resendVerificationEmail } =
+    useAuthStore();
   const { showAlert } = useNotificationStore();
 
   // Jika belum selesai inisialisasi sesi, tampilkan layar loading kosong
@@ -63,7 +64,10 @@ const LoginPage = () => {
     const { success, error } = await resendVerificationEmail(email);
     setIsSubmitting(false);
     if (success) {
-      showAlert("Email verifikasi telah dikirim ulang. Silakan cek inbox/spam Anda.", "success");
+      showAlert(
+        "Email verifikasi telah dikirim ulang. Silakan cek inbox/spam Anda.",
+        "success",
+      );
       setShowResend(false);
       setErrorMsg("");
     } else {
@@ -104,7 +108,20 @@ const LoginPage = () => {
 
           {errorMsg && (
             <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-100 text-sm text-red-600 flex items-start">
-              <svg className="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <svg
+                className="w-5 h-5 mr-2 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
               <span>{errorMsg}</span>
             </div>
           )}
@@ -173,7 +190,6 @@ const LoginPage = () => {
                 </button>
               </div>
             )}
-
           </form>
 
           <div className="mt-6 text-center">
