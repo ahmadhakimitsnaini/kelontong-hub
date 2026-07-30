@@ -79,7 +79,10 @@ const Inbound = () => {
 
   // Data Tab Riwayat
   const inboundLogs = useLiveQuery(
-    () => db.inbound_logs.orderBy("timestamp").reverse().toArray(),
+    async () => {
+      const logs = await db.inbound_logs.toArray();
+      return logs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    },
     [],
   );
   const [selectedLog, setSelectedLog] = useState(null); // State detail riwayat
@@ -236,7 +239,7 @@ const Inbound = () => {
         totalBarangFisik += qty;
       }
 
-      const timestamp = new Date().toISOString();
+      const timestamp = new Date().getTime();
       const isAdmin = !isKasir();
 
       const logDocument = {

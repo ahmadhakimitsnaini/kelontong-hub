@@ -1,4 +1,5 @@
 import Dexie from 'dexie'
+import { getActiveStoreId } from '../lib/storeContext'
 
 /**
  * MaduraDigital - Database Lokal (IndexedDB via Dexie.js)
@@ -152,13 +153,6 @@ db.version(10).stores({
 });
 
 // ── VERSI 11: Tambah Index user_id untuk Isolasi Data per Akun ───────────────
-// Kolom 'user_id' ditambahkan ke seluruh tabel syncable agar:
-// 1. Query filter WHERE user_id = 'xxx' berjalan O(log n), bukan O(n) full scan.
-// 2. Data yang di-pull dari Supabase (yang sudah difilter per user_id) bisa
-//    diidentifikasi dan dikelola secara lokal per akun.
-// Tidak ada upgrade() karena hanya penambahan index — data yang sudah ada
-// tidak perlu dimodifikasi (kolom user_id akan bernilai undefined/null
-// untuk record lama, dan diisi untuk record baru).
 db.version(11).stores({
   products:             '++id, kategori, expiry_date, nama, barcode, stok, supplier_id, user_id',
   transactions:         '++id, shift_id, timestamp, synced, user_id',
@@ -172,6 +166,27 @@ db.version(11).stores({
   settings:             'key, synced',
   pending_deletions:    '++id, tableName, recordId',
   suppliers:            '++id, nama_supplier, kontak_phone, synced, user_id',
+});
+
+// ── VERSI 12: Tambah Index store_id (Sistem Multi-Pengguna Per Toko) ──────────
+// Menggantikan isolasi berbasis user_id dengan store_id agar Owner dan Kasir
+// dalam satu warung dapat berbagi data yang sama.
+// store_id diisi otomatis oleh hook 'creating' dari storeContext singleton.
+// Tidak ada upgrade() karena hanya penambahan index — data lama yang sudah ada
+// akan mendapat store_id dari proses pull (Supabase migration 007).
+db.version(12).stores({
+  products:             '++id, kategori, expiry_date, nama, barcode, stok, supplier_id, user_id, store_id',
+  transactions:         '++id, shift_id, timestamp, synced, user_id, store_id',
+  shifts:               '++id, user_id, start_time, end_time, synced, store_id',
+  expenses:             '++id, shift_id, timestamp, synced, user_id, store_id',
+  journal_entries:      '++id, timestamp, account_name, type, reference_id, reference_type, user_id, store_id',
+  debts:                '++id, supplier_id, supplier_name, due_date, status, created_at, user_id, store_id',
+  receivables:          '++id, customer_name, status, last_updated, user_id, store_id',
+  cash_reconciliation:  '++id, timestamp, shift_id, user_id, store_id',
+  inbound_logs:         '++id, timestamp, supplier_id, kasir_nama, status, synced, user_id, store_id',
+  settings:             'key, synced',
+  pending_deletions:    '++id, tableName, recordId',
+  suppliers:            '++id, nama_supplier, kontak_phone, synced, user_id, store_id',
 });
 
 // ── HOOKS ────────────────────────────────────────────────────────────────────
@@ -188,10 +203,26 @@ const generateUUID = () => {
 syncableTables.forEach(tableName => {
   // HOOK KETIKA INSERT (DATA BARU)
   db[tableName].hook('creating', function (primKey, obj, transaction) {
-    // Beri flag synced = 0
-    if (typeof obj.synced === 'undefined') {
+    if (obj._fromCloud) {
+      obj.synced = 1;
+      delete obj._fromCloud;
+    } else if (typeof obj.synced === 'undefined') {
       obj.synced = 0;
     }
+
+    // AUTO-INJECT store_id dari storeContext singleton.
+    // Ini memastikan SEMUA write ke IndexedDB otomatis punya store_id
+    // tanpa perlu setiap komponen meneruskannya secara manual.
+    // Skip untuk tabel yang bukan data warung.
+    if (tableName !== 'settings' && tableName !== 'pending_deletions') {
+      if (!obj.store_id) {
+        const activeStoreId = getActiveStoreId();
+        if (activeStoreId) {
+          obj.store_id = activeStoreId;
+        }
+      }
+    }
+
     // Paksa ID menggunakan UUID agar tidak tabrakan antar HP
     if (!primKey || typeof primKey === 'number') {
       const uuid = generateUUID();
@@ -207,6 +238,13 @@ syncableTables.forEach(tableName => {
 
   // HOOK KETIKA UPDATE (DATA DIUBAH SEPERTI HARGA/STOK)
   db[tableName].hook('updating', function (modifications, primKey, obj, transaction) {
+    if (modifications._fromCloud) {
+      // Data dari cloud, hapus flag temporary dan jangan ubah jadi 0
+      const nextMods = { ...modifications, synced: 1 };
+      delete nextMods._fromCloud;
+      return nextMods;
+    }
+
     // Jika perubahan BUKAN berasal dari proses tarikan Cloud (yang mengeset synced: 1)
     // Maka kembalikan status synced menjadi 0 agar dikirim ulang ke Cloud
     if (modifications.synced !== 1) {

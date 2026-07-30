@@ -1,5 +1,6 @@
 import db from '../db/db'
 import { supabase } from './supabase'
+import { getActiveStoreId } from './storeContext'
 
 const syncableTables = ['products', 'transactions', 'shifts', 'expenses', 'journal_entries', 'debts', 'receivables', 'cash_reconciliation', 'inbound_logs', 'settings', 'suppliers'];
 
@@ -12,9 +13,9 @@ let isSyncing = false;
 
 /**
  * Mensinkronisasi semua data yang tertunda ke Supabase.
- * @param {string|null} userId - ID user yang sedang login (dari Supabase Auth)
+ * store_id diambil otomatis dari storeContext (diset oleh useAuthStore saat login).
  */
-export const syncAllPendingData = async (userId = null) => {
+export const syncAllPendingData = async () => {
   if (!navigator.onLine) {
     console.log('[Sync] Offline, sinkronisasi dibatalkan.');
     return;
@@ -73,10 +74,11 @@ export const syncAllPendingData = async (userId = null) => {
           // KITA PERTAHANKAN 'id' (UUID) AGAR TIDAK DUPLIKASI
           const { synced, ...rest } = record;
 
-          // Inject user_id ke payload jika record belum memilikinya.
+          // Inject store_id ke payload jika record belum memilikinya.
           // Ini memastikan RLS di Supabase dapat mengenali kepemilikan data.
-          if (userId && !rest.user_id) {
-            rest.user_id = userId;
+          const activeStoreId = getActiveStoreId();
+          if (activeStoreId && !rest.store_id) {
+            rest.store_id = activeStoreId;
           }
 
           return rest;
@@ -99,7 +101,11 @@ export const syncAllPendingData = async (userId = null) => {
         const idsToUpdate = unsyncedRecords.map(r => tableName === 'settings' ? r.key : r.id);
         await db.transaction('rw', db[tableName], async () => {
           for (const localId of idsToUpdate) {
-            await db[tableName].update(localId, { synced: 1 });
+            if (unsyncedRecords.find(r => (tableName === 'settings' ? r.key : r.id) === localId).timestamp) {
+              await db[tableName].update(localId, { synced: 1, timestamp: Number(unsyncedRecords.find(r => (tableName === 'settings' ? r.key : r.id) === localId).timestamp) });
+            } else {
+              await db[tableName].update(localId, { synced: 1 });
+            }
           }
         });
 
@@ -163,11 +169,10 @@ export const clearAllLocalData = async () => {
 /**
  * Menarik (Pull) semua data dari Supabase ke IndexedDB Lokal.
  * Sangat berguna saat user pertama kali login di perangkat baru.
- * @param {string|null} userId - ID user yang sedang login (dari Supabase Auth).
- *   Digunakan untuk memfilter data agar hanya data milik user ini yang ditarik.
- *   Jika null, pull dilakukan tanpa filter (backward compat / fallback).
+ * store_id diambil otomatis dari storeContext (diset oleh useAuthStore saat login).
+ * Hanya data milik store aktif yang ditarik — mencegah kebocoran data antar warung.
  */
-export const pullFromSupabase = async (userId = null) => {
+export const pullFromSupabase = async () => {
   if (!navigator.onLine) {
     console.log('[Sync Pull] Offline, batal menarik data.');
     return;
@@ -190,12 +195,14 @@ export const pullFromSupabase = async (userId = null) => {
       try {
         if (!db[tableName]) continue;
 
-        // Bangun query — filter per user_id jika tersedia
+        // Bangun query — filter per store_id jika tersedia
         let query = supabase.from(tableName).select('*');
 
-        // Tabel 'settings' adalah konfigurasi perangkat/app, tidak perlu filter user
-        if (userId && tableName !== 'settings') {
-          query = query.or(`user_id.eq.${userId},user_id.is.null`);
+        // Tabel 'settings' adalah konfigurasi perangkat/app, tidak perlu filter store
+        const activeStoreId = getActiveStoreId();
+        if (activeStoreId && tableName !== 'settings') {
+          // Ambil data milik store aktif ATAU data lama tanpa store_id (backward compat)
+          query = query.or(`store_id.eq.${activeStoreId},store_id.is.null`);
         }
 
         const { data, error } = await query;
@@ -207,7 +214,14 @@ export const pullFromSupabase = async (userId = null) => {
 
         if (!error && data !== null) {
           // Tambahkan flag synced: 1 agar data cloud tidak di-push balik ke server
-          const recordsToInsert = data.map(item => ({ ...item, synced: 1 }));
+          const recordsToInsert = data.map(item => {
+            const newItem = { ...item, synced: 1, _fromCloud: true };
+            if (newItem.timestamp) {
+              const num = Number(newItem.timestamp);
+              newItem.timestamp = isNaN(num) ? new Date(newItem.timestamp).getTime() : num;
+            }
+            return newItem;
+          });
 
           await db.transaction('rw', db[tableName], async () => {
             // 1. Ambil & pertahankan record lokal yang MASIH PENDING (synced === 0)
@@ -275,11 +289,23 @@ export const subscribeToRealtime = () => {
         if (syncableTables.includes(table)) {
           console.log(`[Sync Realtime] Menerima ${eventType} dari tabel ${table}`, payload);
 
+          // PENTING: Validasi store_id sebelum menulis ke IndexedDB lokal.
+          // Tanpa ini, event dari warung lain bisa mencemari data lokal.
+          const activeStoreId = getActiveStoreId();
+          if (eventType !== 'DELETE' && newRecord?.store_id && activeStoreId && newRecord.store_id !== activeStoreId && table !== 'settings') {
+            console.log(`[Sync Realtime] Mengabaikan event dari store lain (${newRecord.store_id})`);
+            return;
+          }
+
           try {
             await db.transaction('rw', db[table], async () => {
               if (eventType === 'INSERT' || eventType === 'UPDATE') {
+                if (newRecord.timestamp) {
+                  const num = Number(newRecord.timestamp);
+                  newRecord.timestamp = isNaN(num) ? new Date(newRecord.timestamp).getTime() : num;
+                }
                 // Simpan/Timpa ke IndexedDB lokal dengan flag synced: 1
-                await db[table].put({ ...newRecord, synced: 1 });
+                await db[table].put({ ...newRecord, synced: 1, _fromCloud: true });
               } else if (eventType === 'DELETE') {
                 // Hapus dari IndexedDB lokal
                 const pk = table === 'settings' ? oldRecord.key : oldRecord.id;
