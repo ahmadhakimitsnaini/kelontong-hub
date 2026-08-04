@@ -25,6 +25,11 @@ const ApprovalInbound = () => {
             if (product) {
               const newStok = (product.stok || 0) + item.qty_masuk;
               await db.products.update(product.id, { stok: newStok });
+            } else {
+              // PRODUK TIDAK DITEMUKAN!
+              // Jangan biarkan gagal diam-diam!
+              // Harus dibatalkan transaksinya agar status log tidak berubah menjadi APPROVED
+              throw new Error(`Produk dengan nama "${item.nama}" tidak ditemukan di perangkat ini. Harap tunggu proses sinkronisasi selesai atau periksa koneksi internet Anda.`);
             }
           }
 
