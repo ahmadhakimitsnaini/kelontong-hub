@@ -69,16 +69,19 @@ const ReceiptModal = ({ isOpen, onClose, receiptData }) => {
 
   return (
     /* Overlay backdrop */
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[70] overflow-y-auto">
+      {/* Backdrop harus fixed agar tidak ikut scroll dan menutupi layar */}
       <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
         onClick={onClose}
       />
 
-      {/* Wrapper utama modal (tidak ikut di-screenshot) */}
-      <div className="relative w-full max-w-sm flex flex-col items-center gap-4 animate-in fade-in zoom-in-95 duration-300">
+      {/* Container untuk centering dan scroll padding */}
+      <div className="min-h-full flex flex-col items-center justify-center p-4 py-12">
+        {/* Wrapper utama modal (tidak ikut di-screenshot) */}
+        <div className="relative w-full max-w-sm flex flex-col items-center gap-4 animate-in fade-in zoom-in-95 duration-300">
 
-        {/* ── AREA STRUK (yang akan di-screenshot oleh html2canvas) ── */}
+          {/* ── AREA STRUK (yang akan di-screenshot oleh html2canvas) ── */}
         <div
           ref={receiptRef}
           className="w-full bg-white rounded-2xl overflow-hidden font-mono text-gray-800 shadow-2xl"
@@ -192,6 +195,7 @@ const ReceiptModal = ({ isOpen, onClose, receiptData }) => {
             <X className="w-5 h-5" />
             Selesai
           </button>
+        </div>
         </div>
       </div>
     </div>
