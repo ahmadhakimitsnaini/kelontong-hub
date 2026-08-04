@@ -98,13 +98,26 @@ export const syncAllPendingData = async () => {
         }
 
         // Jika berhasil di-cloud, update status lokal
-        const idsToUpdate = unsyncedRecords.map(r => tableName === 'settings' ? r.key : r.id);
         await db.transaction('rw', db[tableName], async () => {
-          for (const localId of idsToUpdate) {
-            if (unsyncedRecords.find(r => (tableName === 'settings' ? r.key : r.id) === localId).timestamp) {
-              await db[tableName].update(localId, { synced: 1, timestamp: Number(unsyncedRecords.find(r => (tableName === 'settings' ? r.key : r.id) === localId).timestamp) });
-            } else {
-              await db[tableName].update(localId, { synced: 1 });
+          for (const record of unsyncedRecords) {
+            const localId = tableName === 'settings' ? record.key : record.id;
+            const currentLocalRecord = await db[tableName].get(localId);
+            
+            if (currentLocalRecord) {
+              // Cek apakah data lokal telah berubah selama proses network request (race condition)
+              const { synced: s1, ...oldData } = record;
+              const { synced: s2, ...currentData } = currentLocalRecord;
+              
+              // Hanya update flag synced: 1 jika isi data tidak berubah selama proses sync berjalan
+              if (JSON.stringify(oldData) === JSON.stringify(currentData)) {
+                if (record.timestamp) {
+                  await db[tableName].update(localId, { synced: 1, timestamp: Number(record.timestamp) });
+                } else {
+                  await db[tableName].update(localId, { synced: 1 });
+                }
+              } else {
+                console.log(`[Sync] Race condition terdeteksi: Record ${localId} di tabel ${tableName} telah diubah selama proses sync. Membiarkan flag synced: 0`);
+              }
             }
           }
         });
@@ -182,7 +195,7 @@ export const pullFromSupabase = async () => {
   // race condition (pull bisa memanggil db.clear() di tengah proses push).
   if (isSyncing) {
     console.log('[Sync Pull] PUSH sedang berjalan. Menunda pull selama 2 detik...');
-    setTimeout(() => pullFromSupabase(userId), 2000);
+    setTimeout(() => pullFromSupabase(), 2000);
     return;
   }
 
