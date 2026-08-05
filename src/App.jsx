@@ -32,7 +32,7 @@ function App() {
             <Route path="/inventory/inbound" element={<Inbound />} />
 
             {/* Rute khusus Admin (akan dilindungi tambahan di dalam AppLayout nanti, tapi untuk perlindungan hard-route:) */}
-            <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
+            <Route element={<ProtectedRoute allowedRoles={["admin", "owner"]} />}>
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/pembukuan" element={<PembukuanPage />} />
               <Route path="/inventory/approval" element={<ApprovalInbound />} />

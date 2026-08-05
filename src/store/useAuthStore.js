@@ -315,8 +315,11 @@ const useAuthStore = create((set, get) => ({
   /** Cek apakah user sedang login */
   isLoggedIn: () => !!get().user,
 
-  /** Cek apakah user adalah admin */
-  isAdmin: () => get().user?.role === 'admin',
+  /** Cek apakah user adalah admin atau owner */
+  isAdmin: () => {
+    const role = get().user?.role;
+    return role === 'admin' || role === 'owner';
+  },
 
   /** Cek apakah user adalah kasir */
   isKasir: () => get().user?.role === 'kasir',
