@@ -56,7 +56,7 @@ const PaymentBadge = ({ method }) => {
   );
 };
 
-const DashboardPage = () => {
+const DashboardPage = () => { console.log("Rendering DashboardPage...");
   // ── 1. STATE FILTER RENTANG WAKTU ────────────────────────────────────────
   const [timeFilter, setTimeFilter] = useState({
     type: "Hari Ini",
@@ -68,37 +68,53 @@ const DashboardPage = () => {
   const { start, end, useBetween } = getTimeRangeBounds(timeFilter);
 
   // ── 3. MENGAMBIL DATA SECARA REAL-TIME DARI DEXIE ────────────────────────
-  const transactions = useLiveQuery(() => {
-    if (
-      timeFilter.type === "Pilih Tanggal..." &&
-      (!timeFilter.customStart || !timeFilter.customEnd)
-    )
+  const transactions = useLiveQuery(async () => {
+    try {
+      if (
+        timeFilter.type === "Pilih Tanggal..." &&
+        (!timeFilter.customStart || !timeFilter.customEnd)
+      ) {
+        return [];
+      }
+      let data = [];
+      if (useBetween) {
+        data = await db.transactions
+          .where("timestamp")
+          .between(start, end)
+          .toArray();
+      } else {
+        data = await db.transactions.orderBy("timestamp").toArray();
+      }
+      return data.reverse();
+    } catch (err) {
+      console.error("Dexie transactions query error:", err);
       return [];
-    if (useBetween) {
-      return db.transactions
-        .where("timestamp")
-        .between(start, end)
-        .reverse()
-        .toArray();
     }
-    return db.transactions.orderBy("timestamp").reverse().toArray();
-  }, [timeFilter]);
+  }, [timeFilter, start, end, useBetween]);
 
-  const expenses = useLiveQuery(() => {
-    if (
-      timeFilter.type === "Pilih Tanggal..." &&
-      (!timeFilter.customStart || !timeFilter.customEnd)
-    )
+  const expenses = useLiveQuery(async () => {
+    try {
+      if (
+        timeFilter.type === "Pilih Tanggal..." &&
+        (!timeFilter.customStart || !timeFilter.customEnd)
+      ) {
+        return [];
+      }
+      let data = [];
+      if (useBetween) {
+        data = await db.expenses
+          .where("timestamp")
+          .between(start, end)
+          .toArray();
+      } else {
+        data = await db.expenses.orderBy("timestamp").toArray();
+      }
+      return data.reverse();
+    } catch (err) {
+      console.error("Dexie expenses query error:", err);
       return [];
-    if (useBetween) {
-      return db.expenses
-        .where("timestamp")
-        .between(start, end)
-        .reverse()
-        .toArray();
     }
-    return db.expenses.orderBy("timestamp").reverse().toArray();
-  }, [timeFilter]);
+  }, [timeFilter, start, end, useBetween]);
 
   // ── 4. LOGIKA KALKULASI LABA / RUGI ──────────────────────────────────────
   let totalOmzet = 0;
