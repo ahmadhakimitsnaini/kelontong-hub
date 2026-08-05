@@ -79,14 +79,20 @@ const AppLayout = () => {
     // PELATUK FOKUS LAYAR: Saat pengguna membuka kembali tab/layar aplikasi (misal di Device 2),
     // langsung tarik data terbaru dari cloud jika belum ditarik dalam 15 detik terakhir.
     let lastFocusPull = Date.now();
+    let pullTimeout = null;
     const handleVisibilityChange = () => {
       if ((document.visibilityState === 'visible' || document.hasFocus()) && navigator.onLine) {
         const now = Date.now();
         if (now - lastFocusPull > 15000) {
-          console.log('[AppLayout] Layar kembali aktif: menarik data terbaru dari cloud...');
+          console.log('[AppLayout] Layar kembali aktif: menunda sinkronisasi 1.5 detik agar UI tidak freeze...');
           lastFocusPull = now;
-          pullFromSupabase();
-          subscribeToRealtime();
+          clearTimeout(pullTimeout);
+          pullTimeout = setTimeout(() => {
+            if (navigator.onLine) {
+              pullFromSupabase();
+              subscribeToRealtime();
+            }
+          }, 1500);
         }
       }
     };
